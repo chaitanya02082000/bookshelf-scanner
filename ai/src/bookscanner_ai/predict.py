@@ -12,10 +12,12 @@ from typing import Generator, AsyncGenerator
 from torch import Tensor
 from .utils import scale_image, image_to_base64, remove_files
 
+
 class BookPredictor:
     """
     A class to predict the title and author of books in an image.
     """
+
     yolo_model: YOLO
     llm: Llama
     chat_handler: Llava15ChatHandler
@@ -28,11 +30,11 @@ class BookPredictor:
     def __init__(self) -> None:
         # Ensure the output directory exists
         os.makedirs(f"{self.output_dir}/segmentation", exist_ok=True)
-        
+
         self.prompt = """Recognize the title and author of this book in the format 'Title by Author'. 
             If there is no author, just the title is fine. 
             If there's no book in the image, please type 'No book'."""
-        
+
     def load_models(self) -> None:
         """
         Initialize and load the YOLO and Moondream models.
@@ -46,7 +48,7 @@ class BookPredictor:
         Args:
             image_path (str): The path to the image file.
         Yields:
-            tuple[str, Generator[str, None]] | None: 
+            tuple[str, Generator[str, None]] | None:
             A tuple containing the YOLO segmented image (as base64 string) and a generator of results.
             If no books are detected, returns None.
         """
@@ -56,7 +58,7 @@ class BookPredictor:
         if segmentation_result is None:
             self.logger.info("No books detected.")
             return None
-        
+
         yolo_output, cropped_books = segmentation_result
 
         # Define the generator for the prediction results
@@ -72,20 +74,24 @@ class BookPredictor:
                     yield f"Error processing book {image_file}: {str(e)}"
 
         return yolo_output, result_generator()
-    
-    async def predict_async(self, image_path: str) -> tuple[str, AsyncGenerator[str, None]] | None:
+
+    async def predict_async(
+        self, image_path: str
+    ) -> tuple[str, AsyncGenerator[str, None]] | None:
         """
         Asynchronously predict the title and author of the books in the image.
         Args:
             image_path (str): The path to the image file.
         Returns:
-            tuple[str, AsyncGenerator[str, None]] | None: 
+            tuple[str, AsyncGenerator[str, None]] | None:
             A tuple containing the YOLO segmented image (as base64 string) and an async generator of results.
             If no books are detected, returns None.
         """
         self.logger.info(f"Async Processing image: {image_path}")
         # Run segmentation asynchronously
-        segmentation_result = await asyncio.to_thread(self._segment_and_prepare_books, image_path)
+        segmentation_result = await asyncio.to_thread(
+            self._segment_and_prepare_books, image_path
+        )
 
         if segmentation_result is None:
             self.logger.info("No books detected.")
@@ -108,7 +114,7 @@ class BookPredictor:
                     yield error_message
 
         return yolo_output, result_generator()
-    
+
     def cleanup(self) -> None:
         """
         Remove all files in the output directory.
@@ -116,7 +122,7 @@ class BookPredictor:
         remove_files(self.output_dir)
         remove_files(f"{self.output_dir}/segmentation")
         self.logger.info("Output directory cleaned up.")
-    
+
     def _init_yolo(self) -> None:
         """
         Try initialize the YOLO model for book segmentation.
@@ -134,10 +140,10 @@ class BookPredictor:
         """
         if self.llm_initialized:
             return
-        
+
         # Load multi modal model from huggingface
         self.chat_handler = MoondreamChatHandler.from_pretrained(
-            repo_id="vikhyatk/moondream2",
+            repo_id="moondream/moondream2-gguf",
             filename="moondream2-mmproj-f16.gguf",
             local_dir="models/cache/moondream2",
             verbose=False,
@@ -157,23 +163,27 @@ class BookPredictor:
         # )
 
         # Load custom quantized model from local file
-        self.llm = Llama(
-            model_path="models/moondream2-text-model-Q4_K_M.gguf",
+        self.llm = Llama.from_pretrained(
+            repo_id="moondream/moondream2-gguf",
+            filename="moondream2-text-model-f16.gguf",  # or a quantized one if available
+            local_dir="models/cache/moondream2",
             chat_handler=self.chat_handler,
-            n_gpu_layers=-1,
             n_ctx=1024,
+            n_gpu_layers=0,  # CPU (use -1 only if CUDA is available)
         )
         self.llm_initialized = True
         self.logger.info("Moondream2 model initialized.")
 
-    def _segment_and_prepare_books(self, image_path: str) -> tuple[str, list[str]] | None:
+    def _segment_and_prepare_books(
+        self, image_path: str
+    ) -> tuple[str, list[str]] | None:
         """
         Segments the image using YOLO, processes each detected book, saves the segmented image,
         and returns it as a base64 string.
         Args:
             image_path (str): Path to the image file.
         Returns:
-            tuple[str, list[str]] | None: 
+            tuple[str, list[str]] | None:
             Base64 encoded segmented image and list of cropped books image paths if books are detected, else None.
         """
         original_image = Image.open(image_path)
@@ -197,16 +207,16 @@ class BookPredictor:
         if not segmentation_mask_data:
             # No books detected
             return None
-        
+
         # Store paths of cropped books
         cropped_books: list[str] = []
         masks, boxes = segmentation_mask_data
-        
+
         # Loop over each detected book and save the cropped image in the output directory
-        for i, (mask, box) in enumerate(zip(masks.data, boxes)): # type: ignore
+        for i, (mask, box) in enumerate(zip(masks.data, boxes)):  # type: ignore
             mask: Tensor
             box: Boxes
-            
+
             cropped_image = self._mask_and_crop(enhanced_image, mask, box)
 
             # Rotate the image if it's identified as a spine
@@ -218,14 +228,18 @@ class BookPredictor:
             cropped_books.append(cropped_image_path)
 
         # Save the segmented image in the output/segmentation directory
-        segmented_image_path = os.path.join(self.output_dir, "segmentation", image_filename)
+        segmented_image_path = os.path.join(
+            self.output_dir, "segmentation", image_filename
+        )
         self.logger.info(f"Segmented image saved to {segmented_image_path}")
         segmented_image_encoded = image_to_base64(segmented_image_path)
 
         # Convert the segmented image to base64
         return segmented_image_encoded, cropped_books
-    
-    def _segment_books(self, image: Image.Image, image_filename: str) -> tuple[Masks, Boxes] | None:
+
+    def _segment_books(
+        self, image: Image.Image, image_filename: str
+    ) -> tuple[Masks, Boxes] | None:
         """
         Segment the books in the image using the YOLO model.
         Args:
@@ -235,7 +249,9 @@ class BookPredictor:
             tuple[Masks, Boxes]: The segmentation masks and bounding boxes. If no books are detected, returns None.
         """
         if not self.yolo_initialized:
-            raise ValueError("YOLO model is not initialized., please call load_models() first.")
+            raise ValueError(
+                "YOLO model is not initialized., please call load_models() first."
+            )
 
         results = self.yolo_model.predict(
             image,
@@ -249,7 +265,7 @@ class BookPredictor:
         results = results[0]
         masks = results.masks
         boxes = results.boxes
-        
+
         results.save(f"{self.output_dir}/segmentation/{image_filename}")
 
         if not masks or not boxes:
@@ -267,9 +283,9 @@ class BookPredictor:
         """
         image = ImageEnhance.Contrast(image).enhance(1.5)
         image = ImageEnhance.Brightness(image).enhance(1.1)
-        #image = ImageEnhance.Sharpness(image).enhance(2)
+        # image = ImageEnhance.Sharpness(image).enhance(2)
         return image
-    
+
     def _reduce_noise(self, image: Image.Image) -> Image.Image:
         """
         Apply noise reduction to the image. Uses OpenCV's fastNlMeansDenoisingColored function.
@@ -281,8 +297,10 @@ class BookPredictor:
         image_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
         image_cv = cv2.fastNlMeansDenoisingColored(image_cv, None, 10, 10, 7, 21)
         return Image.fromarray(cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB))
-    
-    def _mask_and_crop(self, image: Image.Image, mask_data: Tensor, box_data: Boxes) -> Image.Image:
+
+    def _mask_and_crop(
+        self, image: Image.Image, mask_data: Tensor, box_data: Boxes
+    ) -> Image.Image:
         """
         Mask and crop the image using the mask and bounding box.
         Args:
@@ -303,7 +321,7 @@ class BookPredictor:
         x1, y1, x2, y2 = map(int, box_data.xyxy[0])
         cropped_image = masked_image.crop((x1, y1, x2, y2))
         return cropped_image
-    
+
     def _recognize_book(self, image_path: str) -> str:
         """
         Recognize the title and author of the book in the image using the Moondream model.
@@ -313,34 +331,42 @@ class BookPredictor:
             str: The recognized title and author of the book.
         """
         if not self.llm_initialized:
-            raise ValueError("Moondream model is not initialized., please call load_models() first.")
+            raise ValueError(
+                "Moondream model is not initialized., please call load_models() first."
+            )
 
-        response = self.llm.create_chat_completion(messages=[{
-            "role": "user",
-            "content": [
+        response = self.llm.create_chat_completion(
+            messages=[
                 {
-                    "type": "text",
-                    "text": self.prompt,
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {"url": image_to_base64(image_path)}
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": self.prompt,
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_to_base64(image_path)},
+                        },
+                    ],
                 }
             ]
-        }])
+        )
 
-        message_content: str = response["choices"][0]["message"]["content"] # type: ignore
+        message_content: str = response["choices"][0]["message"]["content"]  # type: ignore
         return message_content.strip()
-    
-    def _rotate_if_spine(self, image: Image.Image, box_data: Boxes, threshold = 2.0) -> Image.Image:
+
+    def _rotate_if_spine(
+        self, image: Image.Image, box_data: Boxes, threshold=2.0
+    ) -> Image.Image:
         """
         Rotates the image if it is likely a book spine based on the aspect ratio.
-        
+
         Args:
             image (Image): The cropped book image.
             box (Boxes): Bounding box data.
             threshold (float): Aspect ratio threshold to classify as spine.
-        
+
         Returns:
             Image: The rotated or unrotated image.
         """
@@ -350,5 +376,5 @@ class BookPredictor:
 
         if aspect_ratio > threshold:
             return image.rotate(90, expand=True)
-        
+
         return image

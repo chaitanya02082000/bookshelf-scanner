@@ -1,7 +1,6 @@
 # Bookshelf Scanner App
 
-The Bookshelf Scanner App is an end-to-end solution for detecting books from an image of a bookshelf and identifying their titles and authors. It leverages cutting-edge computer vision (YOLO segmentation) and Large Language Models (Moondream2) to deliver a seamless user experience via a modern web interface.
-
+works
 ## Overview
 
 This repository contains three main components:

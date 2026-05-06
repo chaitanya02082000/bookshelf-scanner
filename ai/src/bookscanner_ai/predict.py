@@ -6,11 +6,13 @@ import asyncio
 from ultralytics import YOLO
 from ultralytics.engine.results import Masks, Boxes
 from PIL import Image, ImageEnhance
-from llama_cpp import Llama
-from llama_cpp.llama_chat_format import Llava15ChatHandler
-from typing import Generator, AsyncGenerator
+from typing import Generator, AsyncGenerator, TYPE_CHECKING
 from torch import Tensor
 from .utils import scale_image, image_to_base64, remove_files
+
+if TYPE_CHECKING:
+    from llama_cpp import Llama
+    from llama_cpp.llama_chat_format import Llava15ChatHandler
 
 
 class BookPredictor:
@@ -19,8 +21,8 @@ class BookPredictor:
     """
 
     yolo_model: YOLO
-    llm: Llama
-    chat_handler: Llava15ChatHandler
+    llm: "Llama"
+    chat_handler: "Llava15ChatHandler"
     prompt: str
     output_dir = os.path.abspath("output")
     yolo_initialized = False
@@ -147,6 +149,13 @@ If there's no book in the image, please type 'No book'."""
         """
         if self.llm_initialized:
             return
+
+        if os.getenv("BOOKSCANNER_DISABLE_LLM", "0").lower() in {"1", "true", "yes"}:
+            self.logger.info("LLM disabled via BOOKSCANNER_DISABLE_LLM.")
+            return
+
+        from llama_cpp import Llama
+        from llama_cpp.llama_chat_format import Llava15ChatHandler
 
         # Vision projector for VL model
         self.chat_handler = Llava15ChatHandler.from_pretrained(
@@ -290,8 +299,8 @@ If there's no book in the image, please type 'No book'."""
         Recognize the title and author from a cropped book image.
         """
         if not self.llm_initialized:
-            raise ValueError(
-                "LLM model is not initialized, please call load_models() first."
+            raise RuntimeError(
+                "LLM model is not initialized. Set BOOKSCANNER_DISABLE_LLM=0 to enable."
             )
 
         response = self.llm.create_chat_completion(

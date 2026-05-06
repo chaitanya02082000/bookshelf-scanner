@@ -14,6 +14,7 @@ router = predict_router
 book_predictor = BookPredictor()
 book_predictor.load_models()
 
+
 @router.post("/")
 async def predict(request: Request, file: UploadFile = File(...)) -> StreamingResponse:
     """
@@ -27,7 +28,9 @@ async def predict(request: Request, file: UploadFile = File(...)) -> StreamingRe
     logger = logging.getLogger()
 
     # Save the uploaded file to a temporary location
-    temp_image_path = f"{book_predictor.output_dir}/temp_{int(time.time())}_{file.filename}"
+    temp_image_path = (
+        f"{book_predictor.output_dir}/temp_{int(time.time())}_{file.filename}"
+    )
 
     with open(temp_image_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
@@ -37,8 +40,15 @@ async def predict(request: Request, file: UploadFile = File(...)) -> StreamingRe
 
         if not prediction_result:
             return StreamingResponse(
-                iter([ResultWithData.fail("No books detected.").model_dump_json(by_alias=True) + "\n"]),
-                media_type="application/json"
+                iter(
+                    [
+                        ResultWithData.fail("No books detected.").model_dump_json(
+                            by_alias=True
+                        )
+                        + "\n"
+                    ]
+                ),
+                media_type="application/json",
             )
 
         segmented_output, result_generator = prediction_result
@@ -48,7 +58,7 @@ async def predict(request: Request, file: UploadFile = File(...)) -> StreamingRe
 
         return StreamingResponse(
             iter([error_result.model_dump_json(by_alias=True) + "\n"]),
-            media_type="application/json"
+            media_type="application/json",
         )
 
     async def stream_generator():
@@ -59,7 +69,7 @@ async def predict(request: Request, file: UploadFile = File(...)) -> StreamingRe
                 image_result = ResultWithData[str].succeed(segmented_output)
             else:
                 image_result = ResultWithData[str].fail("No books detected.")
-            
+
             logger.info("Sent segmented image")
             yield image_result.model_dump_json(by_alias=True) + "\n"
 
@@ -69,6 +79,10 @@ async def predict(request: Request, file: UploadFile = File(...)) -> StreamingRe
                 return
 
             # Then, send the prediction results
+            if not book_predictor.llm_initialized:
+                logger.warning("LLM disabled; returning segmentation only.")
+                return
+
             async for result in result_generator:
                 if await request.is_disconnected():
                     client_disconnected = True

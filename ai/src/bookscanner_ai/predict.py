@@ -9,6 +9,7 @@ from ultralytics.engine.results import Masks, Boxes
 from PIL import Image, ImageEnhance
 from typing import Generator, AsyncGenerator, TYPE_CHECKING
 from torch import Tensor
+from torchvision.ops import nms
 from .utils import scale_image, image_to_base64, remove_files
 
 if TYPE_CHECKING:
@@ -279,6 +280,10 @@ If there's no book in the image, please type 'No book'."""
             return None
 
         masks, boxes = segmentation_mask_data
+        boxes = self._select_boxes(boxes, enhanced_image.size)
+
+        if boxes is None or len(boxes) == 0:
+            return None
         cropped_books: list[str] = []
 
         # Loop over each detected mask/box
@@ -509,3 +514,45 @@ If there's no book in the image, please type 'No book'."""
             return image.rotate(90, expand=True)
 
         return image
+
+    def _select_boxes(self, boxes: Boxes, image_size: tuple[int, int]) -> Boxes:
+        """
+        Filter and prioritize boxes to improve cover detection.
+        """
+        if boxes is None or len(boxes) == 0:
+            return boxes
+
+        width, height = image_size
+        img_area = float(width * height)
+
+        xyxy = boxes.xyxy
+        scores = boxes.conf
+
+        # Compute areas and aspect ratios
+        widths = (xyxy[:, 2] - xyxy[:, 0]).clamp(min=1)
+        heights = (xyxy[:, 3] - xyxy[:, 1]).clamp(min=1)
+        areas = widths * heights
+        aspect = heights / widths
+
+        # Filters: remove very small boxes
+        min_area = float(os.getenv("BOOKSCANNER_MIN_BOX_AREA", "0.002"))
+        keep = areas >= (min_area * img_area)
+
+        # Prefer cover-like boxes: not too thin or too tall
+        max_aspect = float(os.getenv("BOOKSCANNER_MAX_ASPECT", "3.5"))
+        min_aspect = float(os.getenv("BOOKSCANNER_MIN_ASPECT", "0.4"))
+        keep = keep & (aspect <= max_aspect) & (aspect >= min_aspect)
+
+        if keep.sum() == 0:
+            keep = areas >= (min_area * img_area)
+
+        kept_idx = keep.nonzero(as_tuple=False).squeeze(1)
+        xyxy = xyxy[kept_idx]
+        scores = scores[kept_idx]
+
+        # NMS for cleaner boxes
+        iou = float(os.getenv("BOOKSCANNER_NMS_IOU", "0.6"))
+        nms_idx = nms(xyxy, scores, iou)
+
+        final_idx = kept_idx[nms_idx]
+        return boxes[final_idx]

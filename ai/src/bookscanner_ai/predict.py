@@ -140,7 +140,7 @@ If there's no book in the image, please type 'No book'."""
         # Use a segmentation-capable checkpoint.
         # Default to a larger model for better cover detection.
         weights = os.getenv("YOLO_SEG_WEIGHTS", "yolov8x-seg.pt")
-        if weights != "yolo26n-seg.pt" and not os.path.exists(weights):
+        if weights and os.path.isabs(weights) and not os.path.exists(weights):
             raise FileNotFoundError(
                 f"YOLO weights not found at '{weights}'. Set YOLO_SEG_WEIGHTS to a valid path."
             )
@@ -149,9 +149,15 @@ If there's no book in the image, please type 'No book'."""
         self.yolo_model = YOLO(weights)
 
         fallback_weights = os.getenv("YOLO_DET_WEIGHTS", "yolov8x.pt")
-        if fallback_weights and not os.path.exists(fallback_weights):
-            self.yolo_fallback_model = YOLO(fallback_weights)
-        elif fallback_weights:
+        if (
+            fallback_weights
+            and os.path.isabs(fallback_weights)
+            and not os.path.exists(fallback_weights)
+        ):
+            raise FileNotFoundError(
+                f"YOLO fallback weights not found at '{fallback_weights}'. Set YOLO_DET_WEIGHTS to a valid path."
+            )
+        if fallback_weights:
             self.yolo_fallback_model = YOLO(fallback_weights)
         self.yolo_initialized = True
         self.logger.info("YOLO segmentation model initialized with %s.", weights)

@@ -56,6 +56,14 @@ If there's no book in the image, please type 'No book'."""
         """
         Initialize and load the YOLO and Qwen2.5-VL models.
         """
+        self.logger.info(
+            "Loading models with env: YOLO_SEG_WEIGHTS=%s YOLO_DET_WEIGHTS=%s BOOKSCANNER_DETECTOR=%s BOOKSCANNER_DETECTOR_MODEL=%s BOOKSCANNER_LLM_BACKEND=%s",
+            os.getenv("YOLO_SEG_WEIGHTS"),
+            os.getenv("YOLO_DET_WEIGHTS"),
+            os.getenv("BOOKSCANNER_DETECTOR"),
+            os.getenv("BOOKSCANNER_DETECTOR_MODEL"),
+            os.getenv("BOOKSCANNER_LLM_BACKEND"),
+        )
         self._init_yolo()
         self._init_llm()
         self._init_detector()
@@ -154,6 +162,7 @@ If there's no book in the image, please type 'No book'."""
             )
         if weights == "yolo26n-seg.pt" and not os.path.exists(weights):
             weights = "yolov8x-seg.pt"
+        self.logger.info("Initializing YOLO segmentation weights=%s", weights)
         self.yolo_model = YOLO(weights)
 
         fallback_weights = os.getenv("YOLO_DET_WEIGHTS", "yolov8x.pt")
@@ -166,6 +175,9 @@ If there's no book in the image, please type 'No book'."""
                 f"YOLO fallback weights not found at '{fallback_weights}'. Set YOLO_DET_WEIGHTS to a valid path."
             )
         if fallback_weights:
+            self.logger.info(
+                "Initializing YOLO detection fallback weights=%s", fallback_weights
+            )
             self.yolo_fallback_model = YOLO(fallback_weights)
         self.yolo_initialized = True
         self.logger.info("YOLO segmentation model initialized with %s.", weights)
@@ -187,6 +199,7 @@ If there's no book in the image, please type 'No book'."""
             return
 
         backend = os.getenv("BOOKSCANNER_LLM_BACKEND", "auto").lower()
+        self.logger.info("Initializing LLM backend=%s", backend)
 
         if backend in {"auto", "llama-cpp"}:
             try:
@@ -257,6 +270,7 @@ If there's no book in the image, please type 'No book'."""
             return
 
         backend = os.getenv("BOOKSCANNER_DETECTOR", "none").lower()
+        self.logger.info("Initializing detector backend=%s", backend)
         if backend in {"none", "off", "false"}:
             self.detector_initialized = True
             return
@@ -267,6 +281,7 @@ If there's no book in the image, please type 'No book'."""
             "BOOKSCANNER_DETECTOR_MODEL", "IDEA-Research/grounding-dino-base"
         )
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.logger.info("Detector model_id=%s device=%s", model_id, device)
         try:
             self.detector_processor = AutoProcessor.from_pretrained(model_id)
             self.detector_model = (
@@ -302,6 +317,12 @@ If there's no book in the image, please type 'No book'."""
         enhanced_image = self._reduce_noise(enhanced_image)
 
         image_filename = os.path.basename(image_path)
+        self.logger.info(
+            "Segmenting image %s size=%sx%s",
+            image_filename,
+            enhanced_image.size[0],
+            enhanced_image.size[1],
+        )
         segmentation_mask_data = self._segment_books(enhanced_image, image_filename)
 
         if segmentation_mask_data is None:
@@ -319,6 +340,7 @@ If there's no book in the image, please type 'No book'."""
         if segmentation_mask_data is None:
             detector_boxes = self._detect_covers(enhanced_image, image_filename)
             if detector_boxes is None:
+                self.logger.info("Detector returned no boxes for %s", image_filename)
                 return None
             segmentation_mask_data = (None, detector_boxes)
 
@@ -329,6 +351,7 @@ If there's no book in the image, please type 'No book'."""
         boxes = self._select_boxes(boxes, enhanced_image.size)
 
         if boxes is None or len(boxes) == 0:
+            self.logger.info("No boxes after filtering for %s", image_filename)
             return None
         cropped_books: list[str] = []
 
@@ -390,6 +413,15 @@ If there's no book in the image, please type 'No book'."""
             "true",
             "yes",
         }
+        self.logger.info(
+            "YOLO predict %s imgsz=%s conf=%s iou=%s agnostic=%s classes=%s",
+            image_filename,
+            imgsz,
+            conf,
+            iou,
+            agnostic_nms,
+            classes,
+        )
 
         results = self.yolo_model.predict(
             image,
@@ -421,6 +453,7 @@ If there's no book in the image, please type 'No book'."""
 
         if masks is None or boxes is None or len(boxes) == 0:
             if self.yolo_fallback_model is None:
+                self.logger.info("YOLO found no boxes for %s", image_filename)
                 return None
 
             det_results = self.yolo_fallback_model.predict(
@@ -435,6 +468,7 @@ If there's no book in the image, please type 'No book'."""
             )
             det = det_results[0]
             if det.boxes is None or len(det.boxes) == 0:
+                self.logger.info("YOLO fallback found no boxes for %s", image_filename)
                 return None
 
             det.save(filename=f"{self.output_dir}/segmentation/{image_filename}")
@@ -459,6 +493,12 @@ If there's no book in the image, please type 'No book'."""
         )
         box_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_BOX", "0.25"))
         text_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_TEXT", "0.2"))
+        self.logger.info(
+            "Detector prompt='%s' box_threshold=%s text_threshold=%s",
+            text,
+            box_threshold,
+            text_threshold,
+        )
 
         inputs = self.detector_processor(
             images=image, text=text, return_tensors="pt"
@@ -481,6 +521,7 @@ If there's no book in the image, please type 'No book'."""
         scores_t = results[0]["scores"]
 
         if boxes is None or len(boxes) == 0:
+            self.logger.info("Detector produced zero boxes for %s", image_filename)
             return None
 
         iou = float(os.getenv("BOOKSCANNER_NMS_IOU", "0.6"))

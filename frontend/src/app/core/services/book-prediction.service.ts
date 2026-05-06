@@ -51,12 +51,17 @@ export class BookPredictionService implements OnDestroy {
             buffer = lines.pop() || "";
 
             for (const line of lines) {
-              if (!line.trim()) {
+              const trimmedLine = line.trim();
+              if (!trimmedLine) {
                 continue;
               }
 
               try {
-                const data: Result<string> = JSON.parse(line);
+                const parsedLine = this.parseStreamLine(trimmedLine);
+                if (!parsedLine) {
+                  continue;
+                }
+                const data: Result<string> = JSON.parse(parsedLine);
                 observer.next(data);
               } catch (e) {
                 observer.error(`Error parsing JSON: ${e}`);
@@ -83,5 +88,17 @@ export class BookPredictionService implements OnDestroy {
       this.abortController.abort();
       this.abortController = null;
     }
+  }
+
+  private parseStreamLine(line: string) {
+    if (line.startsWith("data:")) {
+      const payload = line.slice(5).trim();
+      if (!payload || payload === "[DONE]") {
+        return null;
+      }
+      return payload;
+    }
+
+    return line;
   }
 }

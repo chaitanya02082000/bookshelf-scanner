@@ -129,8 +129,15 @@ If there's no book in the image, please type 'No book'."""
             return
 
         # Use a segmentation-capable checkpoint.
-        # Keep YOLO26 name (as per your docs). If unavailable in env, change to yolov8n-seg.pt.
-        self.yolo_model = YOLO("yolo26n-seg.pt")
+        # Default to yolo26n-seg.pt; fall back to a public checkpoint if missing.
+        weights = os.getenv("YOLO_SEG_WEIGHTS", "yolo26n-seg.pt")
+        if weights != "yolo26n-seg.pt" and not os.path.exists(weights):
+            raise FileNotFoundError(
+                f"YOLO weights not found at '{weights}'. Set YOLO_SEG_WEIGHTS to a valid path."
+            )
+        if weights == "yolo26n-seg.pt" and not os.path.exists(weights):
+            weights = "yolov8n-seg.pt"
+        self.yolo_model = YOLO(weights)
         self.yolo_initialized = True
         self.logger.info("YOLO segmentation model initialized.")
 
@@ -196,7 +203,7 @@ If there's no book in the image, please type 'No book'."""
         # Loop over each detected mask/box
         for i, (mask, box) in enumerate(zip(masks.data, boxes)):  # type: ignore
             mask = mask  # Tensor
-            box = box    # Boxes row item
+            box = box  # Boxes row item
 
             cropped_image = self._mask_and_crop(enhanced_image, mask, box)
             cropped_image = self._rotate_if_spine(cropped_image, box)
@@ -228,8 +235,8 @@ If there's no book in the image, please type 'No book'."""
         results = self.yolo_model.predict(
             image,
             imgsz=max(image.size[0], image.size[1]),
-            half=False,         # safer across CPU/GPU
-            classes=[73],       # keep your existing behavior; remove for debugging if needed
+            half=False,  # safer across CPU/GPU
+            classes=[73],  # keep your existing behavior; remove for debugging if needed
             retina_masks=True,
             conf=0.25,
             verbose=False,

@@ -22,6 +22,7 @@ class BookPredictor:
     """
 
     yolo_model: YOLO
+    yolo_fallback_model: YOLO | None
     llm: "Llama | None"
     chat_handler: "Llava15ChatHandler | None"
     llm_backend: str
@@ -42,6 +43,7 @@ If there's no book in the image, please type 'No book'."""
         self.llm = None
         self.chat_handler = None
         self.llm_backend = "disabled"
+        self.yolo_fallback_model = None
 
     def load_models(self) -> None:
         """
@@ -136,17 +138,27 @@ If there's no book in the image, please type 'No book'."""
             return
 
         # Use a segmentation-capable checkpoint.
-        # Default to yolo26n-seg.pt; fall back to a public checkpoint if missing.
-        weights = os.getenv("YOLO_SEG_WEIGHTS", "yolo26n-seg.pt")
+        # Default to a larger model for better cover detection.
+        weights = os.getenv("YOLO_SEG_WEIGHTS", "yolov8x-seg.pt")
         if weights != "yolo26n-seg.pt" and not os.path.exists(weights):
             raise FileNotFoundError(
                 f"YOLO weights not found at '{weights}'. Set YOLO_SEG_WEIGHTS to a valid path."
             )
         if weights == "yolo26n-seg.pt" and not os.path.exists(weights):
-            weights = "yolov8n-seg.pt"
+            weights = "yolov8x-seg.pt"
         self.yolo_model = YOLO(weights)
+
+        fallback_weights = os.getenv("YOLO_DET_WEIGHTS", "yolov8x.pt")
+        if fallback_weights and not os.path.exists(fallback_weights):
+            self.yolo_fallback_model = YOLO(fallback_weights)
+        elif fallback_weights:
+            self.yolo_fallback_model = YOLO(fallback_weights)
         self.yolo_initialized = True
-        self.logger.info("YOLO segmentation model initialized.")
+        self.logger.info("YOLO segmentation model initialized with %s.", weights)
+        if self.yolo_fallback_model:
+            self.logger.info(
+                "YOLO detection fallback initialized with %s.", fallback_weights
+            )
 
     def _init_llm(self) -> None:
         """
@@ -233,13 +245,11 @@ If there's no book in the image, please type 'No book'."""
         original_image = Image.open(image_path).convert("RGB")
 
         # Scale image if too large
-        if original_image.size[0] > 2560 or original_image.size[1] > 2560:
-            scaled_image = scale_image(original_image, (2560, 2560))
+        max_dim = int(os.getenv("BOOKSCANNER_MAX_DIM", "3200"))
+        if original_image.size[0] > max_dim or original_image.size[1] > max_dim:
+            scaled_image = scale_image(original_image, (max_dim, max_dim))
         else:
             scaled_image = original_image
-            # Rotate if landscape
-            if scaled_image.width > scaled_image.height:
-                scaled_image = scaled_image.rotate(-90, expand=True)
 
         enhanced_image = self._enhance_image(scaled_image)
         enhanced_image = self._reduce_noise(enhanced_image)
@@ -248,22 +258,42 @@ If there's no book in the image, please type 'No book'."""
         segmentation_mask_data = self._segment_books(enhanced_image, image_filename)
 
         if segmentation_mask_data is None:
+            rotated = enhanced_image.rotate(90, expand=True)
+            rotated_name = f"rot_{image_filename}"
+            segmentation_mask_data = self._segment_books(rotated, rotated_name)
+            if segmentation_mask_data is not None:
+                enhanced_image = rotated
+
+        if segmentation_mask_data is None:
             return None
 
         masks, boxes = segmentation_mask_data
         cropped_books: list[str] = []
 
         # Loop over each detected mask/box
-        for i, (mask, box) in enumerate(zip(masks.data, boxes)):  # type: ignore
-            mask = mask  # Tensor
-            box = box  # Boxes row item
+        if masks is None or masks.data is None or masks.data.numel() == 0:
+            for i, box in enumerate(boxes):  # type: ignore
+                cropped_image = self._crop_box(enhanced_image, box)
+                cropped_image = self._rotate_if_spine(cropped_image, box)
 
-            cropped_image = self._mask_and_crop(enhanced_image, mask, box)
-            cropped_image = self._rotate_if_spine(cropped_image, box)
+                cropped_image_path = os.path.abspath(
+                    f"{self.output_dir}/book_{i + 1}.png"
+                )
+                cropped_image.save(cropped_image_path)
+                cropped_books.append(cropped_image_path)
+        else:
+            for i, (mask, box) in enumerate(zip(masks.data, boxes)):  # type: ignore
+                mask = mask  # Tensor
+                box = box  # Boxes row item
 
-            cropped_image_path = os.path.abspath(f"{self.output_dir}/book_{i + 1}.png")
-            cropped_image.save(cropped_image_path)
-            cropped_books.append(cropped_image_path)
+                cropped_image = self._mask_and_crop(enhanced_image, mask, box)
+                cropped_image = self._rotate_if_spine(cropped_image, box)
+
+                cropped_image_path = os.path.abspath(
+                    f"{self.output_dir}/book_{i + 1}.png"
+                )
+                cropped_image.save(cropped_image_path)
+                cropped_books.append(cropped_image_path)
 
         segmented_image_path = os.path.join(
             self.output_dir, "segmentation", image_filename
@@ -290,13 +320,16 @@ If there's no book in the image, please type 'No book'."""
         if classes_env:
             classes = [int(value) for value in classes_env.split(",")]
 
+        conf = float(os.getenv("BOOKSCANNER_YOLO_CONF", "0.15"))
+        imgsz = int(os.getenv("BOOKSCANNER_YOLO_IMGSZ", "1536"))
+
         results = self.yolo_model.predict(
             image,
-            imgsz=max(image.size[0], image.size[1]),
+            imgsz=imgsz,
             half=False,  # safer across CPU/GPU
             classes=classes,
             retina_masks=True,
-            conf=0.25,
+            conf=conf,
             verbose=False,
         )
 
@@ -308,7 +341,23 @@ If there's no book in the image, please type 'No book'."""
         r.save(filename=f"{self.output_dir}/segmentation/{image_filename}")
 
         if masks is None or boxes is None or len(boxes) == 0:
-            return None
+            if self.yolo_fallback_model is None:
+                return None
+
+            det_results = self.yolo_fallback_model.predict(
+                image,
+                imgsz=imgsz,
+                half=False,
+                classes=classes,
+                conf=conf,
+                verbose=False,
+            )
+            det = det_results[0]
+            if det.boxes is None or len(det.boxes) == 0:
+                return None
+
+            det.save(filename=f"{self.output_dir}/segmentation/{image_filename}")
+            return Masks(torch.empty((0, 1, 1))), det.boxes
 
         return masks, boxes  # type: ignore[return-value]
 
@@ -316,8 +365,9 @@ If there's no book in the image, please type 'No book'."""
         """
         Enhance contrast and brightness for better OCR/VLM results.
         """
-        image = ImageEnhance.Contrast(image).enhance(1.5)
-        image = ImageEnhance.Brightness(image).enhance(1.1)
+        image = ImageEnhance.Contrast(image).enhance(1.7)
+        image = ImageEnhance.Color(image).enhance(1.1)
+        image = ImageEnhance.Brightness(image).enhance(1.15)
         return image
 
     def _reduce_noise(self, image: Image.Image) -> Image.Image:
@@ -342,6 +392,13 @@ If there's no book in the image, please type 'No book'."""
         x1, y1, x2, y2 = map(int, box_data.xyxy[0])
         cropped_image = masked_image.crop((x1, y1, x2, y2))
         return cropped_image
+
+    def _crop_box(self, image: Image.Image, box_data) -> Image.Image:
+        """
+        Crop the image using only the bounding box.
+        """
+        x1, y1, x2, y2 = map(int, box_data.xyxy[0])
+        return image.crop((x1, y1, x2, y2))
 
     def _recognize_book(self, image_path: str) -> str:
         """

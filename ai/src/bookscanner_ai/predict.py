@@ -241,7 +241,16 @@ If there's no book in the image, please type 'No book'."""
             from transformers import AutoProcessor, AutoModelForVision2Seq
 
             model_id = os.getenv("BOOKSCANNER_LLM_MODEL", "Qwen/Qwen2-VL-2B-Instruct")
-            torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+            device_pref = os.getenv("BOOKSCANNER_LLM_DEVICE", "auto").lower()
+
+            if device_pref == "cpu":
+                device_map = "cpu"
+                torch_dtype = torch.float32
+            else:
+                device_map = "auto"
+                torch_dtype = (
+                    torch.float16 if torch.cuda.is_available() else torch.float32
+                )
 
             self.processor = AutoProcessor.from_pretrained(
                 model_id, trust_remote_code=True
@@ -249,7 +258,7 @@ If there's no book in the image, please type 'No book'."""
             self.tf_model = AutoModelForVision2Seq.from_pretrained(
                 model_id,
                 torch_dtype=torch_dtype,
-                device_map="auto",
+                device_map=device_map,
                 trust_remote_code=True,
             )
 
@@ -692,7 +701,7 @@ If there's no book in the image, please type 'No book'."""
             ).to(self.tf_model.device)
             generated_ids = self.tf_model.generate(
                 **inputs,
-                max_new_tokens=64,
+                max_new_tokens=int(os.getenv("BOOKSCANNER_LLM_MAX_TOKENS", "48")),
                 do_sample=False,
             )
             prompt_len = inputs["input_ids"].shape[1]

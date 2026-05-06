@@ -204,9 +204,14 @@ If there's no book in the image, please type 'No book'."""
             model_id = os.getenv("BOOKSCANNER_LLM_MODEL", "Qwen/Qwen2-VL-2B-Instruct")
             torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-            self.processor = AutoProcessor.from_pretrained(model_id)
+            self.processor = AutoProcessor.from_pretrained(
+                model_id, trust_remote_code=True
+            )
             self.tf_model = AutoModelForVision2Seq.from_pretrained(
-                model_id, torch_dtype=torch_dtype, device_map="auto"
+                model_id,
+                torch_dtype=torch_dtype,
+                device_map="auto",
+                trust_remote_code=True,
             )
 
             self.llm_backend = "transformers"
@@ -365,11 +370,25 @@ If there's no book in the image, please type 'No book'."""
             from transformers.image_utils import load_image
 
             image = load_image(image_path)
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": image},
+                        {"type": "text", "text": self.prompt},
+                    ],
+                }
+            ]
+            prompt = self.processor.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
             inputs = self.processor(
-                text=self.prompt, images=image, return_tensors="pt"
+                text=[prompt], images=[image], return_tensors="pt"
             ).to(self.tf_model.device)
             generated_ids = self.tf_model.generate(
-                **inputs, max_new_tokens=64, do_sample=False
+                **inputs,
+                max_new_tokens=64,
+                do_sample=False,
             )
             output = self.processor.batch_decode(
                 generated_ids, skip_special_tokens=True

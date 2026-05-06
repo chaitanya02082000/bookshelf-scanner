@@ -390,8 +390,9 @@ If there's no book in the image, please type 'No book'."""
                 max_new_tokens=64,
                 do_sample=False,
             )
+            prompt_len = inputs["input_ids"].shape[1]
             output = self.processor.batch_decode(
-                generated_ids, skip_special_tokens=True
+                generated_ids[:, prompt_len:], skip_special_tokens=True
             )[0]
             return output.strip()
 

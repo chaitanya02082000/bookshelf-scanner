@@ -30,6 +30,8 @@ class BookPredictor:
     detector_model: object | None
     detector_processor: object | None
     detector_initialized: bool
+    text_backend: str
+    ocr_enabled: bool
     prompt: str
     output_dir = os.path.abspath("output")
     yolo_initialized = False
@@ -51,6 +53,8 @@ If there's no book in the image, please type 'No book'."""
         self.detector_model = None
         self.detector_processor = None
         self.detector_initialized = False
+        self.text_backend = "none"
+        self.ocr_enabled = False
 
     def load_models(self) -> None:
         """
@@ -67,6 +71,7 @@ If there's no book in the image, please type 'No book'."""
         self._init_yolo()
         self._init_llm()
         self._init_detector()
+        self._init_ocr()
 
     def predict(self, image_path: str) -> tuple[str, Generator[str, None, None]] | None:
         """
@@ -305,6 +310,30 @@ If there's no book in the image, please type 'No book'."""
             self.logger.warning("Detector init failed for %s: %s", model_id, e)
         finally:
             self.detector_initialized = True
+
+    def _init_ocr(self) -> None:
+        """
+        Initialize lightweight OCR backend for CPU mode.
+        """
+        backend = os.getenv("BOOKSCANNER_TEXT_BACKEND", "none").lower()
+        self.text_backend = backend
+        if backend in {"none", "off", "false"}:
+            self.ocr_enabled = False
+            return
+
+        if backend == "tesseract":
+            try:
+                import pytesseract  # noqa: F401
+
+                self.ocr_enabled = True
+                self.logger.info("OCR enabled: tesseract")
+            except Exception as e:
+                self.ocr_enabled = False
+                self.logger.warning("Failed to init tesseract OCR: %s", e)
+            return
+
+        self.logger.warning("Unknown BOOKSCANNER_TEXT_BACKEND=%s", backend)
+        self.ocr_enabled = False
 
     def _segment_and_prepare_books(
         self, image_path: str
@@ -656,9 +685,12 @@ If there's no book in the image, please type 'No book'."""
         """
         Recognize the title and author from a cropped book image.
         """
+        if self.ocr_enabled:
+            return self._recognize_book_ocr(image_path)
+
         if not self.llm_initialized:
             raise RuntimeError(
-                "LLM model is not initialized. Set BOOKSCANNER_DISABLE_LLM=0 to enable."
+                "LLM model is not initialized. Enable BOOKSCANNER_TEXT_BACKEND=tesseract or set BOOKSCANNER_DISABLE_LLM=0."
             )
 
         if self.llm_backend == "llama-cpp":
@@ -711,6 +743,23 @@ If there's no book in the image, please type 'No book'."""
             return output.strip()
 
         raise RuntimeError("Unsupported LLM backend configuration.")
+
+    def _recognize_book_ocr(self, image_path: str) -> str:
+        """
+        Lightweight OCR fallback using Tesseract.
+        """
+        import pytesseract
+
+        image = Image.open(image_path).convert("RGB")
+        # Improve contrast for OCR
+        image = ImageEnhance.Contrast(image).enhance(1.8)
+        image = ImageEnhance.Brightness(image).enhance(1.1)
+
+        text = pytesseract.image_to_string(image, config="--psm 6")
+        text = " ".join(line.strip() for line in text.splitlines() if line.strip())
+        if not text:
+            return "No book"
+        return text
 
     def _rotate_if_spine(
         self, image: Image.Image, box_data, threshold: float = 2.0

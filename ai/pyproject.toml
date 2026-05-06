@@ -20,6 +20,7 @@ huggingface-hub = "^0.26.5"
 transformers = "^4.47.0"
 accelerate = "^0.30.0"
 sentencepiece = "^0.2.0"
+pytesseract = "^0.3.13"
 
 
 [[tool.poetry.source]]

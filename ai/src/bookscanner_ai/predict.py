@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import logging
 import asyncio
+import torch
 from ultralytics import YOLO
 from ultralytics.engine.results import Masks, Boxes
 from PIL import Image, ImageEnhance
@@ -21,8 +22,9 @@ class BookPredictor:
     """
 
     yolo_model: YOLO
-    llm: "Llama"
-    chat_handler: "Llava15ChatHandler"
+    llm: "Llama | None"
+    chat_handler: "Llava15ChatHandler | None"
+    llm_backend: str
     prompt: str
     output_dir = os.path.abspath("output")
     yolo_initialized = False
@@ -37,6 +39,9 @@ class BookPredictor:
         self.prompt = """Recognize the title and author of this book in the format 'Title by Author'.
 If there is no author, just the title is fine.
 If there's no book in the image, please type 'No book'."""
+        self.llm = None
+        self.chat_handler = None
+        self.llm_backend = "disabled"
 
     def load_models(self) -> None:
         """
@@ -145,7 +150,8 @@ If there's no book in the image, please type 'No book'."""
 
     def _init_llm(self) -> None:
         """
-        Initialize Qwen2.5-VL (GGUF) with llama-cpp-python.
+        Initialize a vision-language model.
+        Uses llama-cpp when available; falls back to Transformers on GPU.
         """
         if self.llm_initialized:
             return
@@ -154,30 +160,63 @@ If there's no book in the image, please type 'No book'."""
             self.logger.info("LLM disabled via BOOKSCANNER_DISABLE_LLM.")
             return
 
-        from llama_cpp import Llama
-        from llama_cpp.llama_chat_format import Llava15ChatHandler
+        backend = os.getenv("BOOKSCANNER_LLM_BACKEND", "auto").lower()
 
-        # Vision projector for VL model
-        self.chat_handler = Llava15ChatHandler.from_pretrained(
-            repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
-            filename="mmproj-F16.gguf",
-            local_dir="models/cache/qwen2.5",
-            verbose=False,
+        if backend in {"auto", "llama-cpp"}:
+            try:
+                from llama_cpp import Llama
+                from llama_cpp.llama_chat_format import Llava15ChatHandler
+
+                # Vision projector for VL model
+                self.chat_handler = Llava15ChatHandler.from_pretrained(
+                    repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
+                    filename="mmproj-F16.gguf",
+                    local_dir="models/cache/qwen2.5",
+                    verbose=False,
+                )
+
+                # Text model GGUF (balanced quality/speed)
+                self.llm = Llama.from_pretrained(
+                    repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
+                    filename="Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
+                    local_dir="models/cache/qwen2.5",
+                    chat_handler=self.chat_handler,
+                    n_ctx=2048,
+                    n_gpu_layers=0,
+                    verbose=False,
+                )
+
+                self.llm_backend = "llama-cpp"
+                self.llm_initialized = True
+                self.logger.info("Qwen2.5-VL (llama-cpp) model initialized.")
+                return
+            except Exception as e:
+                if backend == "llama-cpp":
+                    raise
+                self.logger.warning(
+                    "Failed to init llama-cpp backend; falling back to transformers: %s",
+                    e,
+                )
+
+        if backend in {"auto", "transformers"}:
+            from transformers import AutoProcessor, AutoModelForVision2Seq
+
+            model_id = os.getenv("BOOKSCANNER_LLM_MODEL", "Qwen/Qwen2-VL-2B-Instruct")
+            torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+
+            self.processor = AutoProcessor.from_pretrained(model_id)
+            self.tf_model = AutoModelForVision2Seq.from_pretrained(
+                model_id, torch_dtype=torch_dtype, device_map="auto"
+            )
+
+            self.llm_backend = "transformers"
+            self.llm_initialized = True
+            self.logger.info("Transformers VLM initialized: %s", model_id)
+            return
+
+        raise ValueError(
+            f"Unknown BOOKSCANNER_LLM_BACKEND='{backend}'. Use 'auto', 'llama-cpp', or 'transformers'."
         )
-
-        # Text model GGUF (balanced quality/speed)
-        self.llm = Llama.from_pretrained(
-            repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
-            filename="Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
-            local_dir="models/cache/qwen2.5",
-            chat_handler=self.chat_handler,
-            n_ctx=2048,
-            n_gpu_layers=0,  # CPU default; set -1 for full GPU offload if CUDA build is available
-            verbose=False,
-        )
-
-        self.llm_initialized = True
-        self.logger.info("Qwen2.5-VL model initialized.")
 
     def _segment_and_prepare_books(
         self, image_path: str
@@ -303,23 +342,41 @@ If there's no book in the image, please type 'No book'."""
                 "LLM model is not initialized. Set BOOKSCANNER_DISABLE_LLM=0 to enable."
             )
 
-        response = self.llm.create_chat_completion(
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": self.prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": image_to_base64(image_path)},
-                        },
-                    ],
-                }
-            ]
-        )
+        if self.llm_backend == "llama-cpp":
+            response = self.llm.create_chat_completion(
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": self.prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": image_to_base64(image_path)},
+                            },
+                        ],
+                    }
+                ]
+            )
 
-        message_content: str = response["choices"][0]["message"]["content"]  # type: ignore
-        return message_content.strip()
+            message_content: str = response["choices"][0]["message"]["content"]  # type: ignore
+            return message_content.strip()
+
+        if self.llm_backend == "transformers":
+            from transformers.image_utils import load_image
+
+            image = load_image(image_path)
+            inputs = self.processor(
+                text=self.prompt, images=image, return_tensors="pt"
+            ).to(self.tf_model.device)
+            generated_ids = self.tf_model.generate(
+                **inputs, max_new_tokens=64, do_sample=False
+            )
+            output = self.processor.batch_decode(
+                generated_ids, skip_special_tokens=True
+            )[0]
+            return output.strip()
+
+        raise RuntimeError("Unsupported LLM backend configuration.")
 
     def _rotate_if_spine(
         self, image: Image.Image, box_data, threshold: float = 2.0

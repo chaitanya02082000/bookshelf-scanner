@@ -17,6 +17,9 @@ ultralytics = "^8.3.47"
 llama-cpp-python = {version = "^0.2.90", source = "llama-cpp-python-cu124"}
 opencv-contrib-python = "^4.10.0.84"
 huggingface-hub = "^0.26.5"
+transformers = "^4.47.0"
+accelerate = "^0.30.0"
+sentencepiece = "^0.2.0"
 
 
 [[tool.poetry.source]]

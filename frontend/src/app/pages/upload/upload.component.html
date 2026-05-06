@@ -1,5 +1,24 @@
 <div class="container flex flex-column p-10">
-  <h1 class="text-3xl font-bold underline">Book Recognizer</h1>
+  <header class="app-header">
+    <div>
+      <p class="app-header__eyebrow">BookShelf Scanner</p>
+      <h1 class="text-3xl font-bold">Book Recognizer</h1>
+    </div>
+    <div class="app-header__actions">
+      @if (auth.user$ | async; as user) {
+        <span class="app-header__user">{{ user.email }}</span>
+      }
+      <button
+        type="button"
+        class="app-header__logout"
+        (click)="
+          auth.logout({logoutParams: {returnTo: window.location.origin}})
+        "
+      >
+        Logout
+      </button>
+    </div>
+  </header>
   <form [formGroup]="uploadForm" (ngSubmit)="submitForm()" class="p-10">
     <input
       formControlName="image"

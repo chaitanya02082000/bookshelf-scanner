@@ -1,16 +1,19 @@
 import {Component, OnDestroy, signal} from "@angular/core";
+import {CommonModule} from "@angular/common";
 import {FormControl, FormGroup, ReactiveFormsModule} from "@angular/forms";
 import {Subscription} from "rxjs";
 import {BookPredictionService} from "@/core/services";
+import {AuthService} from "@auth0/auth0-angular";
 
 @Component({
   selector: "app-upload",
   standalone: true,
   templateUrl: "./upload.component.html",
   styleUrl: "./upload.component.scss",
-  imports: [ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule],
 })
 export class UploadComponent implements OnDestroy {
+  protected readonly window = window;
   private predictionSubscription: Subscription | null = null;
   public readonly uploadForm: FormGroup<UploadForm>;
   public readonly selectedFile = signal<File | null>(null);
@@ -20,7 +23,10 @@ export class UploadComponent implements OnDestroy {
   public readonly uploadedImageSrc = signal<string | null>(null);
   public readonly predictedImageSrc = signal<string | null>(null);
 
-  constructor(private bookPredictionService: BookPredictionService) {
+  constructor(
+    private bookPredictionService: BookPredictionService,
+    public readonly auth: AuthService
+  ) {
     this.uploadForm = new FormGroup<UploadForm>({
       image: new FormControl<File | null>(null),
     });

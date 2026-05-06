@@ -5,6 +5,43 @@
   height: 100vh;
 }
 
+.app-header {
+  width: min(1100px, 100%);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.app-header__eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.18rem;
+  font-size: 0.7rem;
+  color: #6b4f3c;
+  margin: 0 0 0.35rem;
+}
+
+.app-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.app-header__user {
+  font-size: 0.95rem;
+  color: #2f241a;
+}
+
+.app-header__logout {
+  border: 1px solid rgba(47, 36, 26, 0.3);
+  background: rgba(255, 255, 255, 0.75);
+  color: #2f241a;
+  padding: 0.5rem 1.1rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
 .images-container {
   display: flex;
   flex-wrap: wrap;

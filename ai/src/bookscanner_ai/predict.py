@@ -802,4 +802,12 @@ If there's no book in the image, please type 'No book'."""
         nms_idx = nms(xyxy, scores, iou)
 
         final_idx = kept_idx[nms_idx]
-        return boxes[final_idx]
+        selected = boxes[final_idx]
+
+        if os.getenv("BOOKSCANNER_SINGLE_COVER", "0").lower() in {"1", "true", "yes"}:
+            xyxy = selected.xyxy
+            areas = (xyxy[:, 2] - xyxy[:, 0]) * (xyxy[:, 3] - xyxy[:, 1])
+            best_idx = int(torch.argmax(areas).item())
+            return selected[best_idx : best_idx + 1]
+
+        return selected

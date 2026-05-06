@@ -264,6 +264,11 @@ If there's no book in the image, please type 'No book'."""
         segmentation_mask_data = self._segment_books(enhanced_image, image_filename)
 
         if segmentation_mask_data is None:
+            segmentation_mask_data = self._segment_books(scaled_image, image_filename)
+            if segmentation_mask_data is not None:
+                enhanced_image = scaled_image
+
+        if segmentation_mask_data is None:
             rotated = enhanced_image.rotate(90, expand=True)
             rotated_name = f"rot_{image_filename}"
             segmentation_mask_data = self._segment_books(rotated, rotated_name)
@@ -326,8 +331,14 @@ If there's no book in the image, please type 'No book'."""
         if classes_env:
             classes = [int(value) for value in classes_env.split(",")]
 
-        conf = float(os.getenv("BOOKSCANNER_YOLO_CONF", "0.15"))
-        imgsz = int(os.getenv("BOOKSCANNER_YOLO_IMGSZ", "1536"))
+        conf = float(os.getenv("BOOKSCANNER_YOLO_CONF", "0.2"))
+        imgsz = int(os.getenv("BOOKSCANNER_YOLO_IMGSZ", "1920"))
+        iou = float(os.getenv("BOOKSCANNER_YOLO_IOU", "0.45"))
+        agnostic_nms = os.getenv("BOOKSCANNER_YOLO_AGNOSTIC", "1").lower() in {
+            "1",
+            "true",
+            "yes",
+        }
 
         results = self.yolo_model.predict(
             image,
@@ -336,6 +347,8 @@ If there's no book in the image, please type 'No book'."""
             classes=classes,
             retina_masks=True,
             conf=conf,
+            iou=iou,
+            agnostic_nms=agnostic_nms,
             verbose=False,
         )
 
@@ -345,6 +358,15 @@ If there's no book in the image, please type 'No book'."""
 
         # Save visualized segmentation result
         r.save(filename=f"{self.output_dir}/segmentation/{image_filename}")
+        if os.getenv("BOOKSCANNER_DEBUG_DET", "0").lower() in {"1", "true", "yes"}:
+            mask_count = 0 if masks is None else len(masks)
+            box_count = 0 if boxes is None else len(boxes)
+            self.logger.info(
+                "YOLO detections for %s: masks=%s boxes=%s",
+                image_filename,
+                mask_count,
+                box_count,
+            )
 
         if masks is None or boxes is None or len(boxes) == 0:
             if self.yolo_fallback_model is None:
@@ -356,6 +378,8 @@ If there's no book in the image, please type 'No book'."""
                 half=False,
                 classes=classes,
                 conf=conf,
+                iou=iou,
+                agnostic_nms=agnostic_nms,
                 verbose=False,
             )
             det = det_results[0]
@@ -371,9 +395,9 @@ If there's no book in the image, please type 'No book'."""
         """
         Enhance contrast and brightness for better OCR/VLM results.
         """
-        image = ImageEnhance.Contrast(image).enhance(1.7)
-        image = ImageEnhance.Color(image).enhance(1.1)
-        image = ImageEnhance.Brightness(image).enhance(1.15)
+        image = ImageEnhance.Contrast(image).enhance(1.6)
+        image = ImageEnhance.Color(image).enhance(1.15)
+        image = ImageEnhance.Brightness(image).enhance(1.1)
         return image
 
     def _reduce_noise(self, image: Image.Image) -> Image.Image:

@@ -323,7 +323,23 @@ If there's no book in the image, please type 'No book'."""
             enhanced_image.size[0],
             enhanced_image.size[1],
         )
-        segmentation_mask_data = self._segment_books(enhanced_image, image_filename)
+        cover_only = os.getenv("BOOKSCANNER_COVER_ONLY", "0").lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        segmentation_mask_data = None
+        source = "yolo"
+
+        if cover_only:
+            detector_boxes = self._detect_covers(enhanced_image, image_filename)
+            if detector_boxes is not None:
+                segmentation_mask_data = (None, detector_boxes)
+                source = "detector"
+                self.logger.info("Using detector-only boxes for %s", image_filename)
+
+        if segmentation_mask_data is None:
+            segmentation_mask_data = self._segment_books(enhanced_image, image_filename)
 
         if segmentation_mask_data is None:
             segmentation_mask_data = self._segment_books(scaled_image, image_filename)
@@ -343,12 +359,16 @@ If there's no book in the image, please type 'No book'."""
                 self.logger.info("Detector returned no boxes for %s", image_filename)
                 return None
             segmentation_mask_data = (None, detector_boxes)
+            source = "detector"
 
         if segmentation_mask_data is None:
             return None
 
         masks, boxes = segmentation_mask_data
-        boxes = self._select_boxes(boxes, enhanced_image.size)
+        if source != "detector":
+            boxes = self._select_boxes(boxes, enhanced_image.size)
+        else:
+            self.logger.info("Skipping box filtering for detector results")
 
         if boxes is None or len(boxes) == 0:
             self.logger.info("No boxes after filtering for %s", image_filename)

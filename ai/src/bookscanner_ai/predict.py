@@ -332,9 +332,9 @@ If there's no book in the image, please type 'No book'."""
         source = "yolo"
 
         if cover_only:
-            detector_boxes = self._detect_covers(enhanced_image, image_filename)
-            if detector_boxes is not None:
-                segmentation_mask_data = (None, detector_boxes)
+            detector_result = self._detect_covers(enhanced_image, image_filename)
+            if detector_result is not None:
+                segmentation_mask_data = (None, detector_result)
                 source = "detector"
                 self.logger.info("Using detector-only boxes for %s", image_filename)
 
@@ -354,21 +354,24 @@ If there's no book in the image, please type 'No book'."""
                 enhanced_image = rotated
 
         if segmentation_mask_data is None:
-            detector_boxes = self._detect_covers(enhanced_image, image_filename)
-            if detector_boxes is None:
+            detector_result = self._detect_covers(enhanced_image, image_filename)
+            if detector_result is None:
                 self.logger.info("Detector returned no boxes for %s", image_filename)
                 return None
-            segmentation_mask_data = (None, detector_boxes)
+            segmentation_mask_data = (None, detector_result)
             source = "detector"
 
         if segmentation_mask_data is None:
             return None
 
         masks, boxes = segmentation_mask_data
-        if source != "detector":
-            boxes = self._select_boxes(boxes, enhanced_image.size)
-        else:
+        detector_data = None
+        if source == "detector":
+            detector_data = boxes
+            boxes = self._boxes_from_detector(detector_data)
             self.logger.info("Skipping box filtering for detector results")
+        else:
+            boxes = self._select_boxes(boxes, enhanced_image.size)
 
         if boxes is None or len(boxes) == 0:
             self.logger.info("No boxes after filtering for %s", image_filename)
@@ -496,7 +499,9 @@ If there's no book in the image, please type 'No book'."""
 
         return masks, boxes  # type: ignore[return-value]
 
-    def _detect_covers(self, image: Image.Image, image_filename: str) -> Boxes | None:
+    def _detect_covers(
+        self, image: Image.Image, image_filename: str
+    ) -> tuple[torch.Tensor, torch.Tensor, tuple[int, int]] | None:
         """
         Detect front-facing book covers using a zero-shot detector.
         """
@@ -555,9 +560,9 @@ If there's no book in the image, please type 'No book'."""
             draw.rectangle(b.tolist(), outline="red", width=3)
         overlay.save(f"{self.output_dir}/segmentation/{image_filename}")
 
-        data = torch.cat([boxes, scores_t.unsqueeze(1)], dim=1).cpu()
         orig_shape = (image.size[1], image.size[0])
-        return Boxes(data, orig_shape)
+        # Return raw tensors to avoid ultralytics Boxes constructor issues.
+        return boxes, scores_t, orig_shape
 
     def _enhance_image(self, image: Image.Image) -> Image.Image:
         """
@@ -677,6 +682,13 @@ If there's no book in the image, please type 'No book'."""
             return image.rotate(90, expand=True)
 
         return image
+
+    def _boxes_from_detector(
+        self, detector_data: tuple[torch.Tensor, torch.Tensor, tuple[int, int]]
+    ) -> Boxes:
+        boxes, scores, orig_shape = detector_data
+        data = torch.cat([boxes, scores.unsqueeze(1)], dim=1)
+        return Boxes(data, orig_shape)
 
     def _select_boxes(self, boxes: Boxes, image_size: tuple[int, int]) -> Boxes:
         """

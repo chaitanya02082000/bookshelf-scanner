@@ -555,7 +555,9 @@ If there's no book in the image, please type 'No book'."""
             draw.rectangle(b.tolist(), outline="red", width=3)
         overlay.save(f"{self.output_dir}/segmentation/{image_filename}")
 
-        return Boxes(torch.cat([boxes, scores_t.unsqueeze(1)], dim=1))
+        data = torch.cat([boxes, scores_t.unsqueeze(1)], dim=1).cpu()
+        orig_shape = (image.size[1], image.size[0])
+        return Boxes(data, orig_shape)
 
     def _enhance_image(self, image: Image.Image) -> Image.Image:
         """

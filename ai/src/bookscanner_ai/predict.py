@@ -285,11 +285,16 @@ If there's no book in the image, please type 'No book'."""
                 "YOLO model is not initialized, please call load_models() first."
             )
 
+        classes_env = os.getenv("BOOKSCANNER_YOLO_CLASSES", "").strip()
+        classes = None
+        if classes_env:
+            classes = [int(value) for value in classes_env.split(",")]
+
         results = self.yolo_model.predict(
             image,
             imgsz=max(image.size[0], image.size[1]),
             half=False,  # safer across CPU/GPU
-            classes=[73],  # keep your existing behavior; remove for debugging if needed
+            classes=classes,
             retina_masks=True,
             conf=0.25,
             verbose=False,

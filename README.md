@@ -1,6 +1,6 @@
 # Bookshelf Scanner App
 
-works
+ok so only one best box comes now ,but some pictueres increase the gpu ram to too much i guess'
 ## Overview
 
 This repository contains three main components:

@@ -6,7 +6,7 @@ import asyncio
 import torch
 from ultralytics import YOLO
 from ultralytics.engine.results import Masks, Boxes
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageDraw
 from typing import Generator, AsyncGenerator, TYPE_CHECKING
 from torch import Tensor
 from torchvision.ops import nms
@@ -27,6 +27,9 @@ class BookPredictor:
     llm: "Llama | None"
     chat_handler: "Llava15ChatHandler | None"
     llm_backend: str
+    detector_model: object | None
+    detector_processor: object | None
+    detector_initialized: bool
     prompt: str
     output_dir = os.path.abspath("output")
     yolo_initialized = False
@@ -45,6 +48,9 @@ If there's no book in the image, please type 'No book'."""
         self.chat_handler = None
         self.llm_backend = "disabled"
         self.yolo_fallback_model = None
+        self.detector_model = None
+        self.detector_processor = None
+        self.detector_initialized = False
 
     def load_models(self) -> None:
         """
@@ -52,6 +58,7 @@ If there's no book in the image, please type 'No book'."""
         """
         self._init_yolo()
         self._init_llm()
+        self._init_detector()
 
     def predict(self, image_path: str) -> tuple[str, Generator[str, None, None]] | None:
         """
@@ -242,6 +249,33 @@ If there's no book in the image, please type 'No book'."""
             f"Unknown BOOKSCANNER_LLM_BACKEND='{backend}'. Use 'auto', 'llama-cpp', or 'transformers'."
         )
 
+    def _init_detector(self) -> None:
+        """
+        Initialize a cover-focused detector using transformers pipeline.
+        """
+        if self.detector_initialized:
+            return
+
+        backend = os.getenv("BOOKSCANNER_DETECTOR", "none").lower()
+        if backend in {"none", "off", "false"}:
+            self.detector_initialized = True
+            return
+
+        from transformers import pipeline
+
+        model_id = os.getenv(
+            "BOOKSCANNER_DETECTOR_MODEL", "IDEA-Research/grounding-dino-base"
+        )
+        device = 0 if torch.cuda.is_available() else -1
+        self.detector_processor = None
+        self.detector_model = pipeline(
+            task="zero-shot-object-detection",
+            model=model_id,
+            device=device,
+        )
+        self.detector_initialized = True
+        self.logger.info("Detector initialized: %s", model_id)
+
     def _segment_and_prepare_books(
         self, image_path: str
     ) -> tuple[str, list[str]] | None:
@@ -275,6 +309,12 @@ If there's no book in the image, please type 'No book'."""
             segmentation_mask_data = self._segment_books(rotated, rotated_name)
             if segmentation_mask_data is not None:
                 enhanced_image = rotated
+
+        if segmentation_mask_data is None:
+            detector_boxes = self._detect_covers(enhanced_image, image_filename)
+            if detector_boxes is None:
+                return None
+            segmentation_mask_data = (None, detector_boxes)
 
         if segmentation_mask_data is None:
             return None
@@ -395,6 +435,57 @@ If there's no book in the image, please type 'No book'."""
             return Masks(torch.empty((0, 1, 1))), det.boxes
 
         return masks, boxes  # type: ignore[return-value]
+
+    def _detect_covers(self, image: Image.Image, image_filename: str) -> Boxes | None:
+        """
+        Detect front-facing book covers using a zero-shot detector.
+        """
+        if not self.detector_initialized or self.detector_model is None:
+            return None
+
+        candidate_labels = [
+            "book cover",
+            "front cover",
+            "paperback cover",
+            "hardcover book",
+        ]
+        threshold = float(os.getenv("BOOKSCANNER_DETECTOR_SCORE", "0.25"))
+
+        detections = self.detector_model(
+            image,
+            candidate_labels=candidate_labels,
+            threshold=threshold,
+        )
+
+        if not detections:
+            return None
+
+        boxes = []
+        scores = []
+        for det in detections:
+            box = det.get("box")
+            score = det.get("score", 0.0)
+            if not box:
+                continue
+            boxes.append([box["xmin"], box["ymin"], box["xmax"], box["ymax"]])
+            scores.append(score)
+
+        if not boxes:
+            return None
+
+        xyxy = torch.tensor(boxes, dtype=torch.float32)
+        scores_t = torch.tensor(scores, dtype=torch.float32)
+        iou = float(os.getenv("BOOKSCANNER_NMS_IOU", "0.6"))
+        keep = nms(xyxy, scores_t, iou)
+        xyxy = xyxy[keep]
+
+        overlay = image.copy()
+        draw = ImageDraw.Draw(overlay)
+        for b in xyxy:
+            draw.rectangle(b.tolist(), outline="red", width=3)
+        overlay.save(f"{self.output_dir}/segmentation/{image_filename}")
+
+        return Boxes(torch.cat([xyxy, scores_t[keep].unsqueeze(1)], dim=1))
 
     def _enhance_image(self, image: Image.Image) -> Image.Image:
         """

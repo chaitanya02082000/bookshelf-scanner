@@ -261,20 +261,26 @@ If there's no book in the image, please type 'No book'."""
             self.detector_initialized = True
             return
 
-        from transformers import pipeline
+        from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 
         model_id = os.getenv(
             "BOOKSCANNER_DETECTOR_MODEL", "IDEA-Research/grounding-dino-base"
         )
-        device = 0 if torch.cuda.is_available() else -1
-        self.detector_processor = None
-        self.detector_model = pipeline(
-            task="zero-shot-object-detection",
-            model=model_id,
-            device=device,
-        )
-        self.detector_initialized = True
-        self.logger.info("Detector initialized: %s", model_id)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        try:
+            self.detector_processor = AutoProcessor.from_pretrained(model_id)
+            self.detector_model = (
+                AutoModelForZeroShotObjectDetection.from_pretrained(model_id)
+                .to(device)
+                .eval()
+            )
+            self.logger.info("Detector initialized: %s", model_id)
+        except Exception as e:
+            self.detector_processor = None
+            self.detector_model = None
+            self.logger.warning("Detector init failed for %s: %s", model_id, e)
+        finally:
+            self.detector_initialized = True
 
     def _segment_and_prepare_books(
         self, image_path: str
@@ -440,52 +446,55 @@ If there's no book in the image, please type 'No book'."""
         """
         Detect front-facing book covers using a zero-shot detector.
         """
-        if not self.detector_initialized or self.detector_model is None:
+        if (
+            not self.detector_initialized
+            or self.detector_model is None
+            or self.detector_processor is None
+        ):
             return None
 
-        candidate_labels = [
-            "book cover",
-            "front cover",
-            "paperback cover",
-            "hardcover book",
-        ]
-        threshold = float(os.getenv("BOOKSCANNER_DETECTOR_SCORE", "0.25"))
+        text = os.getenv(
+            "BOOKSCANNER_DETECTOR_PROMPT",
+            "book cover. front cover. paperback cover. hardcover book.",
+        )
+        box_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_BOX", "0.25"))
+        text_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_TEXT", "0.2"))
 
-        detections = self.detector_model(
-            image,
-            candidate_labels=candidate_labels,
-            threshold=threshold,
+        inputs = self.detector_processor(
+            images=image, text=text, return_tensors="pt"
+        ).to(self.detector_model.device)
+        with torch.no_grad():
+            outputs = self.detector_model(**inputs)
+
+        results = self.detector_processor.post_process_grounded_object_detection(
+            outputs,
+            inputs.input_ids,
+            box_threshold=box_threshold,
+            text_threshold=text_threshold,
+            target_sizes=[image.size[::-1]],
         )
 
-        if not detections:
+        if not results:
             return None
 
-        boxes = []
-        scores = []
-        for det in detections:
-            box = det.get("box")
-            score = det.get("score", 0.0)
-            if not box:
-                continue
-            boxes.append([box["xmin"], box["ymin"], box["xmax"], box["ymax"]])
-            scores.append(score)
+        boxes = results[0]["boxes"]
+        scores_t = results[0]["scores"]
 
-        if not boxes:
+        if boxes is None or len(boxes) == 0:
             return None
 
-        xyxy = torch.tensor(boxes, dtype=torch.float32)
-        scores_t = torch.tensor(scores, dtype=torch.float32)
         iou = float(os.getenv("BOOKSCANNER_NMS_IOU", "0.6"))
-        keep = nms(xyxy, scores_t, iou)
-        xyxy = xyxy[keep]
+        keep = nms(boxes, scores_t, iou)
+        boxes = boxes[keep]
+        scores_t = scores_t[keep]
 
         overlay = image.copy()
         draw = ImageDraw.Draw(overlay)
-        for b in xyxy:
+        for b in boxes:
             draw.rectangle(b.tolist(), outline="red", width=3)
         overlay.save(f"{self.output_dir}/segmentation/{image_filename}")
 
-        return Boxes(torch.cat([xyxy, scores_t[keep].unsqueeze(1)], dim=1))
+        return Boxes(torch.cat([boxes, scores_t.unsqueeze(1)], dim=1))
 
     def _enhance_image(self, image: Image.Image) -> Image.Image:
         """

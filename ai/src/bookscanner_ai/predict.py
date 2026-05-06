@@ -381,8 +381,12 @@ If there's no book in the image, please type 'No book'."""
         # Loop over each detected mask/box
         if masks is None or masks.data is None or masks.data.numel() == 0:
             for i, box in enumerate(boxes):  # type: ignore
-                cropped_image = self._crop_box(enhanced_image, box)
-                cropped_image = self._rotate_if_spine(cropped_image, box)
+                if detector_data is not None:
+                    cropped_image = self._crop_box_xyxy(enhanced_image, box)
+                    cropped_image = self._rotate_if_spine_xyxy(cropped_image, box)
+                else:
+                    cropped_image = self._crop_box(enhanced_image, box)
+                    cropped_image = self._rotate_if_spine(cropped_image, box)
 
                 cropped_image_path = os.path.abspath(
                     f"{self.output_dir}/book_{i + 1}.png"
@@ -685,10 +689,33 @@ If there's no book in the image, please type 'No book'."""
 
     def _boxes_from_detector(
         self, detector_data: tuple[torch.Tensor, torch.Tensor, tuple[int, int]]
-    ) -> Boxes:
-        boxes, scores, orig_shape = detector_data
-        data = torch.cat([boxes, scores.unsqueeze(1)], dim=1)
-        return Boxes(data, orig_shape)
+    ) -> list[tuple[float, float, float, float]]:
+        boxes, _, _ = detector_data
+        return [tuple(map(float, box.tolist())) for box in boxes]
+
+    def _crop_box_xyxy(
+        self, image: Image.Image, box: tuple[float, float, float, float]
+    ) -> Image.Image:
+        x1, y1, x2, y2 = [int(v) for v in box]
+        return image.crop((x1, y1, x2, y2))
+
+    def _rotate_if_spine_xyxy(
+        self,
+        image: Image.Image,
+        box: tuple[float, float, float, float],
+        threshold: float = 2.0,
+    ) -> Image.Image:
+        x1, y1, x2, y2 = box
+        width = float(x2 - x1)
+        height = float(y2 - y1)
+
+        if width <= 0:
+            return image
+
+        aspect_ratio = height / width
+        if aspect_ratio > threshold:
+            return image.rotate(90, expand=True)
+        return image
 
     def _select_boxes(self, boxes: Boxes, image_size: tuple[int, int]) -> Boxes:
         """

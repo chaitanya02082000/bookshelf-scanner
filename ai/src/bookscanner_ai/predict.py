@@ -569,24 +569,28 @@ If there's no book in the image, please type 'No book'."""
             (aspect >= min_aspect) & (aspect <= max_aspect)
         )
         if keep_mask.sum() == 0:
+            self.logger.info(
+                "Detector filter too strict for %s; relaxing thresholds",
+                image_filename,
+            )
             keep_mask = box_area >= (min_area * img_area)
+        if keep_mask.sum() == 0:
+            keep_mask = torch.ones_like(box_area, dtype=torch.bool)
 
         boxes = boxes[keep_mask]
         scores_t = scores_t[keep_mask]
 
-        if len(boxes) == 0:
-            self.logger.info("Detector boxes filtered out for %s", image_filename)
-            return None
-
-        # Tight NMS to collapse duplicates
-        iou = float(os.getenv("BOOKSCANNER_COVER_NMS_IOU", "0.3"))
+        # NMS to collapse duplicates
+        iou = float(os.getenv("BOOKSCANNER_COVER_NMS_IOU", "0.5"))
         keep = nms(boxes, scores_t, iou)
         boxes = boxes[keep]
         scores_t = scores_t[keep]
 
         # Single-cover mode: keep only the best box
         if os.getenv("BOOKSCANNER_SINGLE_COVER", "1").lower() in {"1", "true", "yes"}:
-            best_idx = int(torch.argmax(scores_t).item())
+            # Prefer largest area when many boxes remain
+            areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+            best_idx = int(torch.argmax(areas).item())
             boxes = boxes[best_idx : best_idx + 1]
             scores_t = scores_t[best_idx : best_idx + 1]
 

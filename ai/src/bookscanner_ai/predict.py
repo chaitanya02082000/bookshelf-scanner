@@ -553,10 +553,42 @@ If there's no book in the image, please type 'No book'."""
             self.logger.info("Detector produced zero boxes for %s", image_filename)
             return None
 
-        iou = float(os.getenv("BOOKSCANNER_NMS_IOU", "0.6"))
+        # Filter for likely front covers
+        width, height = image.size
+        img_area = float(width * height)
+        min_area = float(os.getenv("BOOKSCANNER_COVER_MIN_AREA", "0.02"))
+        min_aspect = float(os.getenv("BOOKSCANNER_COVER_MIN_ASPECT", "0.5"))
+        max_aspect = float(os.getenv("BOOKSCANNER_COVER_MAX_ASPECT", "1.7"))
+
+        box_w = (boxes[:, 2] - boxes[:, 0]).clamp(min=1)
+        box_h = (boxes[:, 3] - boxes[:, 1]).clamp(min=1)
+        box_area = box_w * box_h
+        aspect = box_h / box_w
+
+        keep_mask = (box_area >= (min_area * img_area)) & (
+            (aspect >= min_aspect) & (aspect <= max_aspect)
+        )
+        if keep_mask.sum() == 0:
+            keep_mask = box_area >= (min_area * img_area)
+
+        boxes = boxes[keep_mask]
+        scores_t = scores_t[keep_mask]
+
+        if len(boxes) == 0:
+            self.logger.info("Detector boxes filtered out for %s", image_filename)
+            return None
+
+        # Tight NMS to collapse duplicates
+        iou = float(os.getenv("BOOKSCANNER_COVER_NMS_IOU", "0.3"))
         keep = nms(boxes, scores_t, iou)
         boxes = boxes[keep]
         scores_t = scores_t[keep]
+
+        # Single-cover mode: keep only the best box
+        if os.getenv("BOOKSCANNER_SINGLE_COVER", "1").lower() in {"1", "true", "yes"}:
+            best_idx = int(torch.argmax(scores_t).item())
+            boxes = boxes[best_idx : best_idx + 1]
+            scores_t = scores_t[best_idx : best_idx + 1]
 
         overlay = image.copy()
         draw = ImageDraw.Draw(overlay)

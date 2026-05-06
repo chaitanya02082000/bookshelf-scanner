@@ -1,0 +1,50 @@
+<main class="login">
+  <div class="login__backdrop"></div>
+  <section class="login__shell">
+    <div class="login__brand">
+      <span class="login__logo">BS</span>
+      <div>
+        <p class="login__eyebrow">BookShelf Scanner</p>
+        <h1 class="login__title">Capture every spine. Organize every shelf.</h1>
+      </div>
+    </div>
+
+    <div class="login__card">
+      <div class="login__card-header">
+        <p class="login__heading">Sign in</p>
+        <p class="login__subheading">
+          Upload shelves, extract titles, and keep a clean library record.
+        </p>
+      </div>
+
+      @if (auth.isLoading$ | async) {
+        <div class="login__status">Preparing your session...</div>
+      } @else {
+        @if (auth.error$ | async; as error) {
+          <div class="login__error">{{ error.message }}</div>
+        }
+
+        <div class="login__actions">
+          <button class="login__primary" (click)="auth.loginWithRedirect()">
+            Continue with Auth0
+          </button>
+          <button
+            class="login__secondary"
+            (click)="
+              auth.loginWithRedirect({
+                authorizationParams: {screen_hint: 'signup'},
+              })
+            "
+          >
+            Create account
+          </button>
+        </div>
+
+        <p class="login__hint">
+          By continuing, you agree to keep your library metadata synced with
+          your account.
+        </p>
+      }
+    </div>
+  </section>
+</main>

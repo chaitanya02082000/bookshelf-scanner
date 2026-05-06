@@ -1,0 +1,169 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap");
+
+.login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 3.5rem 1.5rem;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top, rgba(255, 228, 204, 0.7), transparent 55%),
+    radial-gradient(
+      circle at 10% 20%,
+      rgba(255, 250, 235, 0.9),
+      transparent 45%
+    ),
+    linear-gradient(140deg, #f5efe8 0%, #f0e1d3 45%, #d8c3ae 100%);
+  font-family:
+    "Plus Jakarta Sans",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  color: #2f241a;
+}
+
+.login__backdrop {
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cg fill='none' stroke='%23d8c3ae' stroke-width='0.6' opacity='0.5'%3E%3Cpath d='M0 32h160'/%3E%3Cpath d='M0 96h160'/%3E%3Cpath d='M32 0v160'/%3E%3Cpath d='M96 0v160'/%3E%3C/g%3E%3C/svg%3E")
+    repeat;
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+}
+
+.login__shell {
+  width: min(1100px, 100%);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2.5rem;
+  align-items: center;
+  z-index: 1;
+}
+
+.login__brand {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.login__logo {
+  width: 3.5rem;
+  height: 3.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: 1rem;
+  background: #2f241a;
+  color: #fdf6ef;
+  font-weight: 700;
+  letter-spacing: 0.12rem;
+}
+
+.login__eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.22rem;
+  font-size: 0.72rem;
+  color: #6b4f3c;
+  margin: 0 0 0.35rem;
+}
+
+.login__title {
+  font-family: "Fraunces", "Times New Roman", serif;
+  font-size: clamp(2rem, 3vw, 3.2rem);
+  margin: 0;
+  line-height: 1.15;
+}
+
+.login__card {
+  padding: 2.5rem 2.25rem;
+  background: rgba(255, 255, 255, 0.78);
+  border-radius: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 25px 60px rgba(83, 54, 29, 0.18);
+  backdrop-filter: blur(18px);
+  display: grid;
+  gap: 1.75rem;
+}
+
+.login__card-header {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.login__heading {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.login__subheading {
+  margin: 0;
+  color: #6b4f3c;
+  line-height: 1.5;
+}
+
+.login__actions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.login__primary,
+.login__secondary {
+  border: none;
+  border-radius: 999px;
+  padding: 0.85rem 1.5rem;
+  font-size: 0.98rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.login__primary {
+  background: #2f241a;
+  color: #fdf6ef;
+  box-shadow: 0 18px 25px rgba(47, 36, 26, 0.22);
+}
+
+.login__primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 22px 30px rgba(47, 36, 26, 0.28);
+}
+
+.login__secondary {
+  background: rgba(255, 255, 255, 0.85);
+  color: #2f241a;
+  border: 1px solid rgba(47, 36, 26, 0.2);
+}
+
+.login__secondary:hover {
+  transform: translateY(-1px);
+}
+
+.login__status,
+.login__error,
+.login__hint {
+  font-size: 0.9rem;
+  color: #6b4f3c;
+}
+
+.login__error {
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: rgba(140, 48, 32, 0.08);
+  color: #8c3020;
+}
+
+.login__hint {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .login {
+    padding: 2.5rem 1.25rem;
+  }
+
+  .login__card {
+    padding: 2rem 1.75rem;
+  }
+}

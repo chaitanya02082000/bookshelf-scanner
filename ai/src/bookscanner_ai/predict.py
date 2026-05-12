@@ -6,7 +6,7 @@ import asyncio
 import torch
 from ultralytics import YOLO
 from ultralytics.engine.results import Masks, Boxes
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageDraw
 from typing import Generator, AsyncGenerator
 from torch import Tensor
 from torchvision.ops import nms
@@ -65,6 +65,7 @@ If there's no book in the image, please type 'No book'."""
         )
         self._init_yolo()
         self._init_llm()
+        self._init_detector()
 
     def predict(self, image_path: str) -> tuple[str, Generator[str, None, None]] | None:
         """
@@ -222,6 +223,41 @@ If there's no book in the image, please type 'No book'."""
         self.logger.info("Transformers VLM initialized: %s", model_id)
         return
 
+    def _init_detector(self) -> None:
+        """
+        Initialize a cover-focused detector using transformers pipeline.
+        """
+        if self.detector_initialized:
+            return
+
+        backend = os.getenv("BOOKSCANNER_DETECTOR", "grounding-dino").lower()
+        self.logger.info("Initializing detector backend=%s", backend)
+        if backend in {"none", "off", "false"}:
+            self.detector_initialized = True
+            return
+
+        from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
+
+        model_id = os.getenv(
+            "BOOKSCANNER_DETECTOR_MODEL", "IDEA-Research/grounding-dino-base"
+        )
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.logger.info("Detector model_id=%s device=%s", model_id, device)
+        try:
+            self.detector_processor = AutoProcessor.from_pretrained(model_id)
+            self.detector_model = (
+                AutoModelForZeroShotObjectDetection.from_pretrained(model_id)
+                .to(device)
+                .eval()
+            )
+            self.logger.info("Detector initialized: %s", model_id)
+        except Exception as e:
+            self.detector_processor = None
+            self.detector_model = None
+            self.logger.warning("Detector init failed for %s: %s", model_id, e)
+        finally:
+            self.detector_initialized = True
+
     def _segment_and_prepare_books(
         self, image_path: str
     ) -> tuple[str, list[str]] | None:
@@ -232,7 +268,7 @@ If there's no book in the image, please type 'No book'."""
         original_image = Image.open(image_path).convert("RGB")
 
         # Scale image if too large
-        max_dim = int(os.getenv("BOOKSCANNER_MAX_DIM", "3200"))
+        max_dim = int(os.getenv("BOOKSCANNER_MAX_DIM", "4096"))
         if original_image.size[0] > max_dim or original_image.size[1] > max_dim:
             scaled_image = scale_image(original_image, (max_dim, max_dim))
         else:
@@ -248,7 +284,23 @@ If there's no book in the image, please type 'No book'."""
             enhanced_image.size[0],
             enhanced_image.size[1],
         )
-        segmentation_mask_data = self._segment_books(enhanced_image, image_filename)
+        cover_only = os.getenv("BOOKSCANNER_COVER_ONLY", "0").lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        segmentation_mask_data = None
+        source = "yolo"
+
+        if cover_only:
+            detector_result = self._detect_covers(enhanced_image, image_filename)
+            if detector_result is not None:
+                segmentation_mask_data = (None, detector_result)
+                source = "detector"
+                self.logger.info("Using detector-only boxes for %s", image_filename)
+
+        if segmentation_mask_data is None:
+            segmentation_mask_data = self._segment_books(enhanced_image, image_filename)
 
         if segmentation_mask_data is None:
             segmentation_mask_data = self._segment_books(scaled_image, image_filename)
@@ -267,7 +319,13 @@ If there's no book in the image, please type 'No book'."""
             return None
 
         masks, boxes = segmentation_mask_data
-        boxes = self._select_boxes(boxes, enhanced_image.size)
+        detector_data = None
+        if source == "detector":
+            detector_data = boxes
+            boxes = self._boxes_from_detector(detector_data)
+            self.logger.info("Skipping box filtering for detector results")
+        else:
+            boxes = self._select_boxes(boxes, enhanced_image.size)
 
         if boxes is None or len(boxes) == 0:
             self.logger.info("No boxes after filtering for %s", image_filename)
@@ -277,8 +335,12 @@ If there's no book in the image, please type 'No book'."""
         # Loop over each detected mask/box
         if masks is None or masks.data is None or masks.data.numel() == 0:
             for i, box in enumerate(boxes):  # type: ignore
-                cropped_image = self._crop_box(enhanced_image, box)
-                cropped_image = self._rotate_if_spine(cropped_image, box)
+                if detector_data is not None:
+                    cropped_image = self._crop_box_xyxy(enhanced_image, box)
+                    cropped_image = self._rotate_if_spine_xyxy(cropped_image, box)
+                else:
+                    cropped_image = self._crop_box(enhanced_image, box)
+                    cropped_image = self._rotate_if_spine(cropped_image, box)
 
                 cropped_image_path = os.path.abspath(
                     f"{self.output_dir}/book_{i + 1}.png"
@@ -324,9 +386,9 @@ If there's no book in the image, please type 'No book'."""
         if classes_env:
             classes = [int(value) for value in classes_env.split(",")]
 
-        conf = float(os.getenv("BOOKSCANNER_YOLO_CONF", "0.2"))
-        imgsz = int(os.getenv("BOOKSCANNER_YOLO_IMGSZ", "1920"))
-        iou = float(os.getenv("BOOKSCANNER_YOLO_IOU", "0.45"))
+        conf = float(os.getenv("BOOKSCANNER_YOLO_CONF", "0.15"))
+        imgsz = int(os.getenv("BOOKSCANNER_YOLO_IMGSZ", "2560"))
+        iou = float(os.getenv("BOOKSCANNER_YOLO_IOU", "0.5"))
         agnostic_nms = os.getenv("BOOKSCANNER_YOLO_AGNOSTIC", "1").lower() in {
             "1",
             "true",
@@ -369,6 +431,25 @@ If there's no book in the image, please type 'No book'."""
                 mask_count,
                 box_count,
             )
+
+        if masks is None or boxes is None or len(boxes) == 0:
+            if classes is not None:
+                self.logger.info("YOLO found no boxes; retrying without class filter")
+                results = self.yolo_model.predict(
+                    image,
+                    imgsz=imgsz,
+                    half=False,
+                    classes=None,
+                    retina_masks=True,
+                    conf=conf,
+                    iou=iou,
+                    agnostic_nms=agnostic_nms,
+                    verbose=False,
+                )
+                r = results[0]
+                masks = r.masks
+                boxes = r.boxes
+                r.save(filename=f"{self.output_dir}/segmentation/{image_filename}")
 
         if masks is None or boxes is None or len(boxes) == 0:
             if self.yolo_fallback_model is None:
@@ -471,6 +552,124 @@ If there's no book in the image, please type 'No book'."""
         )[0]
         return output.strip()
 
+    def _detect_covers(
+        self, image: Image.Image, image_filename: str
+    ) -> tuple[torch.Tensor, torch.Tensor, tuple[int, int]] | None:
+        """
+        Detect front-facing book covers using a zero-shot detector.
+        """
+        if (
+            not self.detector_initialized
+            or self.detector_model is None
+            or self.detector_processor is None
+        ):
+            return None
+
+        text = os.getenv(
+            "BOOKSCANNER_DETECTOR_PROMPT",
+            "book cover. front cover. book spine. hardcover book. paperback book.",
+        )
+        box_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_BOX", "0.2"))
+        text_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_TEXT", "0.2"))
+        self.logger.info(
+            "Detector prompt='%s' box_threshold=%s text_threshold=%s",
+            text,
+            box_threshold,
+            text_threshold,
+        )
+
+        inputs = self.detector_processor(
+            images=image, text=text, return_tensors="pt"
+        ).to(self.detector_model.device)
+        with torch.no_grad():
+            outputs = self.detector_model(**inputs)
+
+        results = self.detector_processor.post_process_grounded_object_detection(
+            outputs,
+            inputs.input_ids,
+            box_threshold=box_threshold,
+            text_threshold=text_threshold,
+            target_sizes=[image.size[::-1]],
+        )
+
+        if not results:
+            return None
+
+        boxes = results[0]["boxes"]
+        scores_t = results[0]["scores"]
+
+        if boxes is None or len(boxes) == 0:
+            self.logger.info("Detector produced zero boxes for %s", image_filename)
+            return None
+
+        # Filter for likely covers/spines
+        width, height = image.size
+        img_area = float(width * height)
+        min_area = float(os.getenv("BOOKSCANNER_COVER_MIN_AREA", "0.01"))
+        min_aspect = float(os.getenv("BOOKSCANNER_COVER_MIN_ASPECT", "0.2"))
+        max_aspect = float(os.getenv("BOOKSCANNER_COVER_MAX_ASPECT", "8.0"))
+
+        box_w = (boxes[:, 2] - boxes[:, 0]).clamp(min=1)
+        box_h = (boxes[:, 3] - boxes[:, 1]).clamp(min=1)
+        box_area = box_w * box_h
+        aspect = box_h / box_w
+
+        keep_mask = (box_area >= (min_area * img_area)) & (
+            (aspect >= min_aspect) & (aspect <= max_aspect)
+        )
+        if keep_mask.sum() == 0:
+            keep_mask = box_area >= (min_area * img_area)
+        if keep_mask.sum() == 0:
+            keep_mask = torch.ones_like(box_area, dtype=torch.bool)
+
+        boxes = boxes[keep_mask]
+        scores_t = scores_t[keep_mask]
+
+        # NMS to collapse duplicates
+        iou = float(os.getenv("BOOKSCANNER_COVER_NMS_IOU", "0.5"))
+        keep = nms(boxes, scores_t, iou)
+        boxes = boxes[keep]
+        scores_t = scores_t[keep]
+
+        overlay = image.copy()
+        draw = ImageDraw.Draw(overlay)
+        for b in boxes:
+            draw.rectangle(b.tolist(), outline="red", width=3)
+        overlay.save(f"{self.output_dir}/segmentation/{image_filename}")
+
+        orig_shape = (image.size[1], image.size[0])
+        return boxes, scores_t, orig_shape
+
+    def _boxes_from_detector(
+        self, detector_data: tuple[torch.Tensor, torch.Tensor, tuple[int, int]]
+    ) -> list[tuple[float, float, float, float]]:
+        boxes, _, _ = detector_data
+        return [tuple(map(float, box.tolist())) for box in boxes]
+
+    def _crop_box_xyxy(
+        self, image: Image.Image, box: tuple[float, float, float, float]
+    ) -> Image.Image:
+        x1, y1, x2, y2 = [int(v) for v in box]
+        return image.crop((x1, y1, x2, y2))
+
+    def _rotate_if_spine_xyxy(
+        self,
+        image: Image.Image,
+        box: tuple[float, float, float, float],
+        threshold: float = 2.0,
+    ) -> Image.Image:
+        x1, y1, x2, y2 = box
+        width = float(x2 - x1)
+        height = float(y2 - y1)
+
+        if width <= 0:
+            return image
+
+        aspect_ratio = height / width
+        if aspect_ratio > threshold:
+            return image.rotate(90, expand=True)
+        return image
+
     def _rotate_if_spine(
         self, image: Image.Image, box_data, threshold: float = 2.0
     ) -> Image.Image:
@@ -515,7 +714,7 @@ If there's no book in the image, please type 'No book'."""
         keep = areas >= (min_area * img_area)
 
         # Prefer book spines: allow tall boxes by default
-        max_aspect = float(os.getenv("BOOKSCANNER_MAX_ASPECT", "8.0"))
+        max_aspect = float(os.getenv("BOOKSCANNER_MAX_ASPECT", "10.0"))
         min_aspect = float(os.getenv("BOOKSCANNER_MIN_ASPECT", "0.2"))
         keep = keep & (aspect <= max_aspect) & (aspect >= min_aspect)
 

@@ -1,4 +1,16 @@
 <main class="upload">
+  @if (notifications().length) {
+    <div class="upload__notifications">
+      @for (notice of notifications(); track notice.id) {
+        <div class="upload__notification">
+          <span>{{ notice.message }}</span>
+          <button type="button" (click)="dismissNotification(notice.id)">
+            Close
+          </button>
+        </div>
+      }
+    </div>
+  }
   <header class="app-header">
     <div>
       <p class="app-header__eyebrow">BookShelf Scanner</p>
@@ -101,6 +113,16 @@
         <p>Titles appear as they are recognized.</p>
       </div>
 
+      @if (isProcessing() && results().length === 0) {
+        <div class="skeleton-stack">
+          <div class="skeleton-line skeleton-line--wide"></div>
+          <div class="skeleton-line"></div>
+          <div class="skeleton-line skeleton-line--short"></div>
+          <div class="skeleton-line"></div>
+          <div class="skeleton-line skeleton-line--wide"></div>
+        </div>
+      }
+
       @if (results().length === 0) {
         <div class="upload__empty">
           <p>No results yet. Upload a shelf to begin.</p>
@@ -109,6 +131,72 @@
         <ul class="results-container">
           @for (result of results(); track result) {
             <li class="result-row">{{ result }}</li>
+          }
+        </ul>
+      }
+    </div>
+
+    <div class="upload__card upload__review">
+      <div class="upload__card-header">
+        <h3>Needs review</h3>
+        <p>Low confidence matches are queued here.</p>
+      </div>
+
+      @if (pendingSearchCount() > 0 && pendingMatches().length === 0) {
+        <div class="review-skeleton">
+          <div class="skeleton-line skeleton-line--wide"></div>
+          <div class="skeleton-line"></div>
+          <div class="skeleton-line skeleton-line--short"></div>
+        </div>
+      }
+
+      @if (pendingMatches().length === 0) {
+        <div class="upload__empty">
+          <p>No items waiting for review.</p>
+        </div>
+      } @else {
+        <ul class="review-list">
+          @for (match of pendingMatches(); track match.id) {
+            <li class="review-card">
+              <div class="review-card__info">
+                <p class="review-card__title">{{ match.parsedTitle }}</p>
+                @if (match.parsedAuthor) {
+                  <p class="review-card__author">by {{ match.parsedAuthor }}</p>
+                }
+                <p class="review-card__meta">
+                  {{ match.reason }} · Confidence {{ match.confidence | number: "1.0-2" }}
+                </p>
+              </div>
+              @if (match.candidate) {
+                <div class="review-card__candidate">
+                  <p class="review-card__candidate-label">Suggested match</p>
+                  <p class="review-card__candidate-title">
+                    {{ match.candidate.title }}
+                  </p>
+                  <p class="review-card__candidate-author">
+                    {{ match.candidate.authors[0] }}
+                  </p>
+                </div>
+              }
+              <div class="review-card__actions">
+                @if (match.candidate) {
+                  <button
+                    class="review-card__primary"
+                    type="button"
+                    (click)="addPendingToLibrary(match)"
+                  >
+                    Add to library
+                  </button>
+                }
+                <button
+                  class="review-card__secondary"
+                  type="button"
+                  (click)="removePending(match.id)"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </li>
           }
         </ul>
       }
@@ -143,6 +231,13 @@
           [src]="predictedImageSrc()"
           alt="Predicted image preview"
         />
+      } @else if (isProcessing()) {
+        <div class="image-card__placeholder image-card__placeholder--loading">
+          <div class="image-card__loader">
+            <span>Developing segments</span>
+            <span class="image-card__loader-subtitle">Scanning spines under lamplight</span>
+          </div>
+        </div>
       } @else {
         <div class="image-card__placeholder">Waiting for prediction</div>
       }

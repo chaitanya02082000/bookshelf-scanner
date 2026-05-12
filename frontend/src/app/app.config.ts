@@ -9,8 +9,12 @@ export const appConfig: ApplicationConfig = {
     provideAuth0({
         domain: "dev-kdeoxnytvveh762k.us.auth0.com",
         clientId: "crK6gn79cUaYckp3DArilapQ5oCP2wYZ",
+        cacheLocation: "localstorage",
+        useRefreshTokens: true,
         authorizationParams: {
             redirect_uri: window.location.origin,
+            audience: "bookshelf",
+            scope: "openid profile email offline_access",
         },
     }),
 

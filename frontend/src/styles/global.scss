@@ -1,2 +1,102 @@
 /* You can add global styles to this file, and also import other style files */
-@use 'tailwindcss';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --bs-ink: #f4efe7;
+  --bs-ink-soft: #d9cbb9;
+  --bs-ink-faded: #b6a28c;
+  --bs-bg: #120e0b;
+  --bs-bg-strong: #0e0b09;
+  --bs-surface: #1a1411;
+  --bs-surface-raised: #231a14;
+  --bs-surface-soft: #2a2018;
+  --bs-accent: #b07a5e;
+  --bs-accent-strong: #d2a183;
+  --bs-border: rgba(244, 239, 231, 0.14);
+  --bs-border-strong: rgba(244, 239, 231, 0.22);
+  --bs-shadow: 0 24px 48px rgba(3, 2, 2, 0.6);
+  --bs-shadow-soft: 0 12px 24px rgba(3, 2, 2, 0.45);
+  --bs-radius-lg: 1.5rem;
+  --bs-radius-md: 1rem;
+  --bs-radius-sm: 0.75rem;
+  --bs-space-1: 0.5rem;
+  --bs-space-2: 1rem;
+  --bs-space-3: 1.5rem;
+  --bs-space-4: 2rem;
+  --bs-space-5: 2.5rem;
+  --bs-space-6: 3rem;
+  --bs-font-heading: "Fraunces", "Times New Roman", serif;
+  --bs-font-body: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --bs-type-h1: 2.5rem;
+  --bs-type-h2: 2rem;
+  --bs-type-h3: 1.5rem;
+  --bs-type-h4: 1.125rem;
+  --bs-type-body: 1rem;
+  --bs-line-heading: 1.2;
+  --bs-line-body: 1.6;
+}
+
+body {
+  margin: 0;
+  font-family: var(--bs-font-body);
+  font-size: var(--bs-type-body);
+  line-height: var(--bs-line-body);
+  color: var(--bs-ink);
+  background: radial-gradient(circle at 20% 10%, rgba(176, 122, 94, 0.12), transparent 45%),
+    linear-gradient(160deg, var(--bs-bg) 0%, #18110c 55%, #221813 100%);
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--bs-font-heading);
+  letter-spacing: -0.02em;
+  margin: 0;
+  line-height: var(--bs-line-heading);
+}
+
+h1 {
+  font-size: var(--bs-type-h1);
+}
+
+h2 {
+  font-size: var(--bs-type-h2);
+}
+
+h3 {
+  font-size: var(--bs-type-h3);
+}
+
+h4 {
+  font-family: var(--bs-font-heading);
+  font-size: var(--bs-type-h4);
+  line-height: var(--bs-line-heading);
+  margin: 0;
+}
+
+p {
+  margin: 0;
+  line-height: var(--bs-line-body);
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  background: rgba(176, 122, 94, 0.45);
+  color: #fffaf5;
+}
+
+button,
+input {
+  font-family: inherit;
+}
+
+* {
+  box-sizing: border-box;
+}

@@ -1,90 +1,151 @@
-<div class="container flex flex-column p-10">
+<main class="upload">
   <header class="app-header">
     <div>
       <p class="app-header__eyebrow">BookShelf Scanner</p>
-      <h1 class="text-3xl font-bold">Book Recognizer</h1>
+      <h2 class="app-header__title">Book Recognizer</h2>
+      <p class="app-header__subtitle">
+        Turn a full bookshelf into a clean, searchable reading list.
+      </p>
     </div>
-    <div class="app-header__actions">
-      @if (auth.user$ | async; as user) {
-        <span class="app-header__user">{{ user.email }}</span>
-      }
-      <button
-        type="button"
-        class="app-header__logout"
-        (click)="
-          auth.logout({logoutParams: {returnTo: window.location.origin}})
-        "
-      >
-        Logout
-      </button>
-    </div>
+    <div class="app-header__actions"></div>
   </header>
-  <form [formGroup]="uploadForm" (ngSubmit)="submitForm()" class="p-10">
-    <input
-      formControlName="image"
-      type="file"
-      (change)="handleFileSelected($event)"
-      accept="image/*"
-    />
-    <button
-      class="bg-transparent hover:bg-blue-500 text-blue-700 font-semibold hover:text-white py-2 px-4 border border-blue-500 hover:border-transparent rounded"
-      type="submit"
-      [disabled]="!selectedFile() || isProcessing()"
-    >
-      Upload
-    </button>
-    <button
-      type="button"
-      (click)="cancelProcess()"
-      [disabled]="!isProcessing()"
-    >
-      Cancel
-    </button>
-  </form>
 
-  @if (isProcessing()) {
-    <div>
-      <h4>Processing...</h4>
-      <p>Uploading and processing the image...</p>
+  <section class="upload__hero">
+    <div class="upload__hero-card">
+      <p class="upload__eyebrow">Scan & catalog</p>
+      <h2>Capture every spine in one pass.</h2>
+      <p>
+        Upload a bookshelf image and watch the titles stream in as we segment and
+        read each book.
+      </p>
+      <div class="upload__steps">
+        <span>1. Upload shelf</span>
+        <span>2. Segment spines</span>
+        <span>3. Extract titles</span>
+      </div>
     </div>
-  }
+  </section>
 
-  @if (errorMessage()) {
-    <div>
-      <p class="error">{{ errorMessage() }}</p>
-    </div>
-  }
+  <section class="upload__grid">
+    <form
+      class="upload__card"
+      [formGroup]="uploadForm"
+      (ngSubmit)="submitForm()"
+    >
+      <div class="upload__card-header">
+        <h3>Upload a bookshelf image</h3>
+        <p>JPEG or PNG, ideally full shelf and straight-on.</p>
+      </div>
 
-  <div>
-    <h2>Results:</h2>
-    <ul class="results-container">
-      @for (result of results(); track result) {
-        <li>{{ result }}</li>
+      <label class="upload__dropzone" for="bookshelf-file">
+        <input
+          id="bookshelf-file"
+          formControlName="image"
+          type="file"
+          (change)="handleFileSelected($event)"
+          accept="image/*"
+        />
+        <div class="upload__dropzone-content">
+          <span class="upload__dropzone-title">
+            @if (selectedFile()) {
+              {{ selectedFile()?.name }}
+            } @else {
+              Drop your shelf image or browse files
+            }
+          </span>
+          <span class="upload__dropzone-subtitle">
+            @if (selectedFile()) {
+              Ready to scan.
+            } @else {
+              We will stream the extracted titles below.
+            }
+          </span>
+        </div>
+      </label>
+
+      <div class="upload__actions">
+        <button
+          class="upload__primary"
+          type="submit"
+          [disabled]="!selectedFile() || isProcessing()"
+        >
+          Start scan
+        </button>
+        <button
+          class="upload__secondary"
+          type="button"
+          (click)="cancelProcess()"
+          [disabled]="!isProcessing()"
+        >
+          Cancel
+        </button>
+      </div>
+
+      @if (isProcessing()) {
+        <div class="upload__status">
+          <h4>Processing...</h4>
+          <p>Uploading and scanning the shelf image.</p>
+        </div>
       }
-    </ul>
-  </div>
 
-  <div class="images-container">
-    @if (uploadedImageSrc()) {
-      <div>
-        <h4>Uploaded image:</h4>
+      @if (errorMessage()) {
+        <div class="upload__error">
+          {{ errorMessage() }}
+        </div>
+      }
+    </form>
+
+    <div class="upload__card upload__results">
+      <div class="upload__card-header">
+        <h3>Detected titles</h3>
+        <p>Titles appear as they are recognized.</p>
+      </div>
+
+      @if (results().length === 0) {
+        <div class="upload__empty">
+          <p>No results yet. Upload a shelf to begin.</p>
+        </div>
+      } @else {
+        <ul class="results-container">
+          @for (result of results(); track result) {
+            <li class="result-row">{{ result }}</li>
+          }
+        </ul>
+      }
+    </div>
+  </section>
+
+  <section class="upload__images">
+    <div class="image-card">
+      <div class="image-card__header">
+        <h4>Original image</h4>
+        <p>Your upload preview</p>
+      </div>
+      @if (uploadedImageSrc()) {
         <img
           class="image"
           [src]="uploadedImageSrc()"
           alt="Uploaded image preview"
         />
-      </div>
-    }
+      } @else {
+        <div class="image-card__placeholder">No image yet</div>
+      }
+    </div>
 
-    @if (predictedImageSrc()) {
-      <div>
-        <h4>Predicted image:</h4>
+    <div class="image-card">
+      <div class="image-card__header">
+        <h4>Segmented shelf</h4>
+        <p>Spines detected by the model</p>
+      </div>
+      @if (predictedImageSrc()) {
         <img
           class="image"
           [src]="predictedImageSrc()"
           alt="Predicted image preview"
         />
-      </div>
-    }
-  </div>
-</div>
+      } @else {
+        <div class="image-card__placeholder">Waiting for prediction</div>
+      }
+    </div>
+  </section>
+</main>

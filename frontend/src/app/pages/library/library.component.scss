@@ -1,0 +1,120 @@
+.library {
+  display: grid;
+  gap: var(--bs-space-5);
+}
+
+.library__header h2 {
+  margin: 0.35rem 0;
+  font-family: "Fraunces", "Times New Roman", serif;
+  font-size: clamp(1.8rem, 2.4vw, 2.5rem);
+}
+
+.library__eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.2rem;
+  font-size: 0.7rem;
+  color: var(--bs-ink-faded);
+  margin: 0;
+}
+
+.library__subtitle {
+  margin: 0;
+  color: var(--bs-ink-soft);
+  max-width: 38rem;
+}
+
+.library__empty {
+  padding: var(--bs-space-5);
+  border-radius: var(--bs-radius-lg);
+  border: 1px dashed var(--bs-border);
+  color: var(--bs-ink-faded);
+  background: var(--bs-surface);
+}
+
+.library__grid {
+  display: grid;
+  gap: var(--bs-space-4);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.library-card {
+  background: var(--bs-surface);
+  border-radius: var(--bs-radius-md);
+  border: 1px solid var(--bs-border);
+  box-shadow: var(--bs-shadow-soft);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: var(--bs-space-3);
+  padding: var(--bs-space-3);
+  position: relative;
+  overflow: hidden;
+}
+
+.library-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(0, 0, 0, 0.25) 100%
+  );
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.library-card__cover {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: var(--bs-surface-soft);
+  border-radius: var(--bs-radius-sm);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.library-card__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.library-card__placeholder {
+  color: var(--bs-ink-faded);
+  font-size: 0.85rem;
+}
+
+.library-card__body h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
+.library-card__author {
+  margin: 0;
+  color: var(--bs-ink-soft);
+  font-size: 0.95rem;
+}
+
+.library-card__meta {
+  margin-top: var(--bs-space-1);
+  display: flex;
+  gap: var(--bs-space-1);
+  font-size: 0.8rem;
+  color: var(--bs-ink-faded);
+}
+
+.library-card__meta span {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--bs-border);
+  background: var(--bs-surface-soft);
+}
+
+.library-card__remove {
+  border: 1px solid rgba(140, 48, 32, 0.3);
+  background: var(--bs-surface-soft);
+  color: #d38c75;
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+}

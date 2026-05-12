@@ -1,0 +1,48 @@
+<section class="library">
+  <div class="library__header">
+    <div>
+      <p class="library__eyebrow">Your shelves</p>
+      <h2>Library</h2>
+      <p class="library__subtitle">
+        Curate the books scanned from your shelves and any discoveries you add.
+      </p>
+    </div>
+  </div>
+
+  @if (!hasBooks()) {
+    <div class="library__empty">
+      <p>No books yet. Upload a shelf or search to begin building your library.</p>
+    </div>
+  } @else {
+    <div class="library__grid">
+      @for (book of books(); track book.id) {
+        <article class="library-card">
+          <div class="library-card__cover">
+            @if (book.coverUrl) {
+              <img [src]="book.coverUrl" [alt]="book.title" />
+            } @else {
+              <div class="library-card__placeholder">No cover</div>
+            }
+          </div>
+          <div class="library-card__body">
+            <h3>{{ book.title }}</h3>
+            <p class="library-card__author">
+              {{ book.authors.join(", ") }}
+            </p>
+            <div class="library-card__meta">
+              @if (book.publishedDate) {
+                <span>{{ book.publishedDate }}</span>
+              }
+              @if (book.source) {
+                <span>{{ book.source }}</span>
+              }
+            </div>
+          </div>
+          <button class="library-card__remove" (click)="removeBook(book.id)">
+            Remove
+          </button>
+        </article>
+      }
+    </div>
+  }
+</section>

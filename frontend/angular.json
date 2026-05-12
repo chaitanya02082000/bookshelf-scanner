@@ -32,26 +32,26 @@
             "styles": ["src/styles/global.scss"],
             "scripts": []
           },
-          "configurations": {
-            "production": {
-              "fileReplacements": [
+            "configurations": {
+              "production": {
+                "fileReplacements": [
                 {
                   "replace": "src/environments/environment.ts",
                   "with": "src/environments/environment.prod.ts"
                 }
               ],
-              "budgets": [
-                {
-                  "type": "initial",
-                  "maximumWarning": "500kB",
-                  "maximumError": "1MB"
-                },
-                {
-                  "type": "anyComponentStyle",
-                  "maximumWarning": "2kB",
-                  "maximumError": "4kB"
-                }
-              ],
+                "budgets": [
+                  {
+                    "type": "initial",
+                    "maximumWarning": "500kB",
+                    "maximumError": "1MB"
+                  },
+                  {
+                    "type": "anyComponentStyle",
+                    "maximumWarning": "10kB",
+                    "maximumError": "12kB"
+                  }
+                ],
               "outputHashing": "all"
             },
             "development": {

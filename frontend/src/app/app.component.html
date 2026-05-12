@@ -1,1 +1,36 @@
-<router-outlet></router-outlet>
+<div class="app-shell">
+  @if (!isLoginRoute()) {
+    <header class="shell-header">
+      <div class="shell-header__brand">
+        <span class="shell-header__logo">BS</span>
+        <div>
+          <p class="shell-header__eyebrow">BookShelf Scanner</p>
+          <h1 class="shell-header__title">Reader's Cabinet</h1>
+        </div>
+      </div>
+      <nav class="shell-nav">
+        <a routerLink="/library">Library</a>
+        <a routerLink="/scan">Scan</a>
+        <a routerLink="/search">Search</a>
+      </nav>
+      <div class="shell-header__actions">
+        @if (auth.user$ | async; as user) {
+          <span class="shell-header__user">{{ user.email }}</span>
+        }
+        <button
+          type="button"
+          class="shell-header__logout"
+          (click)="
+            auth.logout({logoutParams: {returnTo: window.location.origin}})
+          "
+        >
+          Logout
+        </button>
+      </div>
+    </header>
+  }
+
+  <main class="shell-content">
+    <router-outlet></router-outlet>
+  </main>
+</div>

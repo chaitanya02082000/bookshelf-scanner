@@ -2,7 +2,8 @@ import {Component, OnDestroy, signal} from "@angular/core";
 import {CommonModule} from "@angular/common";
 import {FormControl, FormGroup, ReactiveFormsModule} from "@angular/forms";
 import {Subscription} from "rxjs";
-import {BookPredictionService} from "@/core/services";
+import {BookCatalogService, BookPredictionService, LibraryService} from "@/core/services";
+import {Book} from "@/core/models";
 import {AuthService} from "@auth0/auth0-angular";
 
 @Component({
@@ -25,6 +26,8 @@ export class UploadComponent implements OnDestroy {
 
   constructor(
     private bookPredictionService: BookPredictionService,
+    private readonly catalog: BookCatalogService,
+    private readonly library: LibraryService,
     public readonly auth: AuthService
   ) {
     this.uploadForm = new FormGroup<UploadForm>({
@@ -74,7 +77,8 @@ export class UploadComponent implements OnDestroy {
               this.predictedImageSrc.set(result.data);
             } else {
               // Subsequent success responses are the results
-              this.results.update((results) => [...results, result.data!]);
+                this.results.update((results) => [...results, result.data!]);
+                this.fetchBookMetadata(result.data!);
             }
           } else {
             this.errorMessage.set(result.error ?? "Unknown error");
@@ -101,6 +105,26 @@ export class UploadComponent implements OnDestroy {
     }
 
     this.isProcessing.set(false);
+  }
+
+  private async fetchBookMetadata(line: string) {
+    const normalized = line.replace(/^Book\s+\d+:/i, "").trim();
+    if (!normalized) {
+      return;
+    }
+    const response = await this.catalog.search(normalized, 1);
+    const book = response.items[0];
+    if (book) {
+      this.library.addBook(this.decorateFromScan(book, normalized));
+    }
+  }
+
+  private decorateFromScan(book: Book, raw: string): Book {
+    return {
+      ...book,
+      source: "scan",
+      description: book.description ?? `Imported from scan: ${raw}`,
+    };
   }
 }
 

@@ -1,0 +1,57 @@
+<section class="search">
+  <div class="search__header">
+    <div>
+      <p class="search__eyebrow">Discover</p>
+      <h2>Search the catalog</h2>
+      <p class="search__subtitle">
+        Find any book and add it to your scanned library.
+      </p>
+    </div>
+    <form class="search__bar" (ngSubmit)="runSearch()">
+      <input
+        type="search"
+        placeholder="Search by title, author, or ISBN"
+        [ngModel]="query()"
+        (ngModelChange)="query.set($event)"
+        name="query"
+      />
+      <button type="submit">Search</button>
+    </form>
+  </div>
+
+  <div class="search__results">
+    @if (catalog.isLoading()) {
+      <div class="search__status">Searching the catalog...</div>
+    }
+
+    @if (!catalog.isLoading() && results().length === 0) {
+      <div class="search__empty">
+        <p>Start a search to see results.</p>
+      </div>
+    }
+
+    @if (results().length > 0) {
+      <p class="search__count">{{ total() }} matches</p>
+      <div class="search__grid">
+        @for (book of results(); track book.id) {
+          <article class="search-card">
+            <div class="search-card__cover">
+              @if (book.coverUrl) {
+                <img [src]="book.coverUrl" [alt]="book.title" />
+              } @else {
+                <div class="search-card__placeholder">No cover</div>
+              }
+            </div>
+            <div class="search-card__body">
+              <h3>{{ book.title }}</h3>
+              <p>{{ book.authors.join(", ") }}</p>
+            </div>
+            <button class="search-card__cta" (click)="addToLibrary(book)">
+              Add to library
+            </button>
+          </article>
+        }
+      </div>
+    }
+  </div>
+</section>

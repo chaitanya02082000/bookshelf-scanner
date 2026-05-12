@@ -1,0 +1,36 @@
+<section class="detail">
+  @if (isLoading()) {
+    <div class="detail__status">Loading book details...</div>
+  } @else {
+    @if (book(); as book) {
+      <div class="detail__grid">
+        <div class="detail__cover">
+          @if (book.coverUrl) {
+            <img [src]="book.coverUrl" [alt]="book.title" />
+          } @else {
+            <div class="detail__placeholder">No cover</div>
+          }
+        </div>
+        <div class="detail__content">
+          <p class="detail__eyebrow">Book details</p>
+          <h2>{{ book.title }}</h2>
+          <p class="detail__author">{{ book.authors.join(", ") }}</p>
+          <div class="detail__meta">
+            @if (book.publishedDate) {
+              <span>Published {{ book.publishedDate }}</span>
+            }
+            @if (book.pageCount) {
+              <span>{{ book.pageCount }} pages</span>
+            }
+          </div>
+          <p class="detail__description">
+            {{ book.description || "No description available yet." }}
+          </p>
+          <button class="detail__cta" (click)="addToLibrary()">
+            Add to library
+          </button>
+        </div>
+      </div>
+    }
+  }
+</section>

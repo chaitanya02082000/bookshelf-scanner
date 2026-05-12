@@ -6,16 +6,11 @@ import asyncio
 import torch
 from ultralytics import YOLO
 from ultralytics.engine.results import Masks, Boxes
-from PIL import Image, ImageEnhance, ImageDraw
-from typing import Generator, AsyncGenerator, TYPE_CHECKING
+from PIL import Image, ImageEnhance
+from typing import Generator, AsyncGenerator
 from torch import Tensor
 from torchvision.ops import nms
 from .utils import scale_image, image_to_base64, remove_files
-
-if TYPE_CHECKING:
-    from llama_cpp import Llama
-    from llama_cpp.llama_chat_format import Llava15ChatHandler
-
 
 class BookPredictor:
     """
@@ -24,8 +19,8 @@ class BookPredictor:
 
     yolo_model: YOLO
     yolo_fallback_model: YOLO | None
-    llm: "Llama | None"
-    chat_handler: "Llava15ChatHandler | None"
+    llm: object | None
+    chat_handler: object | None
     llm_backend: str
     detector_model: object | None
     detector_processor: object | None
@@ -70,8 +65,6 @@ If there's no book in the image, please type 'No book'."""
         )
         self._init_yolo()
         self._init_llm()
-        self._init_detector()
-        self._init_ocr()
 
     def predict(self, image_path: str) -> tuple[str, Generator[str, None, None]] | None:
         """
@@ -193,8 +186,7 @@ If there's no book in the image, please type 'No book'."""
 
     def _init_llm(self) -> None:
         """
-        Initialize a vision-language model.
-        Uses llama-cpp when available; falls back to Transformers on GPU.
+        Initialize a vision-language model using transformers only.
         """
         if self.llm_initialized:
             return
@@ -203,137 +195,32 @@ If there's no book in the image, please type 'No book'."""
             self.logger.info("LLM disabled via BOOKSCANNER_DISABLE_LLM.")
             return
 
-        backend = os.getenv("BOOKSCANNER_LLM_BACKEND", "auto").lower()
-        self.logger.info("Initializing LLM backend=%s", backend)
+        from transformers import AutoProcessor, AutoModelForVision2Seq
 
-        if backend in {"auto", "llama-cpp"}:
-            try:
-                from llama_cpp import Llama
-                from llama_cpp.llama_chat_format import Llava15ChatHandler
+        model_id = os.getenv("BOOKSCANNER_LLM_MODEL", "Qwen/Qwen2-VL-2B-Instruct")
+        device_pref = os.getenv("BOOKSCANNER_LLM_DEVICE", "auto").lower()
 
-                # Vision projector for VL model
-                self.chat_handler = Llava15ChatHandler.from_pretrained(
-                    repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
-                    filename="mmproj-F16.gguf",
-                    local_dir="models/cache/qwen2.5",
-                    verbose=False,
-                )
+        if device_pref == "cpu":
+            device_map = "cpu"
+            torch_dtype = torch.float32
+        else:
+            device_map = "auto"
+            torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-                # Text model GGUF (balanced quality/speed)
-                self.llm = Llama.from_pretrained(
-                    repo_id="unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
-                    filename="Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
-                    local_dir="models/cache/qwen2.5",
-                    chat_handler=self.chat_handler,
-                    n_ctx=2048,
-                    n_gpu_layers=0,
-                    verbose=False,
-                )
-
-                self.llm_backend = "llama-cpp"
-                self.llm_initialized = True
-                self.logger.info("Qwen2.5-VL (llama-cpp) model initialized.")
-                return
-            except Exception as e:
-                if backend == "llama-cpp":
-                    raise
-                self.logger.warning(
-                    "Failed to init llama-cpp backend; falling back to transformers: %s",
-                    e,
-                )
-
-        if backend in {"auto", "transformers"}:
-            from transformers import AutoProcessor, AutoModelForVision2Seq
-
-            model_id = os.getenv("BOOKSCANNER_LLM_MODEL", "Qwen/Qwen2-VL-2B-Instruct")
-            device_pref = os.getenv("BOOKSCANNER_LLM_DEVICE", "auto").lower()
-
-            if device_pref == "cpu":
-                device_map = "cpu"
-                torch_dtype = torch.float32
-            else:
-                device_map = "auto"
-                torch_dtype = (
-                    torch.float16 if torch.cuda.is_available() else torch.float32
-                )
-
-            self.processor = AutoProcessor.from_pretrained(
-                model_id, trust_remote_code=True
-            )
-            self.tf_model = AutoModelForVision2Seq.from_pretrained(
-                model_id,
-                torch_dtype=torch_dtype,
-                device_map=device_map,
-                trust_remote_code=True,
-            )
-
-            self.llm_backend = "transformers"
-            self.llm_initialized = True
-            self.logger.info("Transformers VLM initialized: %s", model_id)
-            return
-
-        raise ValueError(
-            f"Unknown BOOKSCANNER_LLM_BACKEND='{backend}'. Use 'auto', 'llama-cpp', or 'transformers'."
+        self.processor = AutoProcessor.from_pretrained(
+            model_id, trust_remote_code=True
+        )
+        self.tf_model = AutoModelForVision2Seq.from_pretrained(
+            model_id,
+            torch_dtype=torch_dtype,
+            device_map=device_map,
+            trust_remote_code=True,
         )
 
-    def _init_detector(self) -> None:
-        """
-        Initialize a cover-focused detector using transformers pipeline.
-        """
-        if self.detector_initialized:
-            return
-
-        backend = os.getenv("BOOKSCANNER_DETECTOR", "none").lower()
-        self.logger.info("Initializing detector backend=%s", backend)
-        if backend in {"none", "off", "false"}:
-            self.detector_initialized = True
-            return
-
-        from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
-
-        model_id = os.getenv(
-            "BOOKSCANNER_DETECTOR_MODEL", "IDEA-Research/grounding-dino-base"
-        )
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.logger.info("Detector model_id=%s device=%s", model_id, device)
-        try:
-            self.detector_processor = AutoProcessor.from_pretrained(model_id)
-            self.detector_model = (
-                AutoModelForZeroShotObjectDetection.from_pretrained(model_id)
-                .to(device)
-                .eval()
-            )
-            self.logger.info("Detector initialized: %s", model_id)
-        except Exception as e:
-            self.detector_processor = None
-            self.detector_model = None
-            self.logger.warning("Detector init failed for %s: %s", model_id, e)
-        finally:
-            self.detector_initialized = True
-
-    def _init_ocr(self) -> None:
-        """
-        Initialize lightweight OCR backend for CPU mode.
-        """
-        backend = os.getenv("BOOKSCANNER_TEXT_BACKEND", "none").lower()
-        self.text_backend = backend
-        if backend in {"none", "off", "false"}:
-            self.ocr_enabled = False
-            return
-
-        if backend == "tesseract":
-            try:
-                import pytesseract  # noqa: F401
-
-                self.ocr_enabled = True
-                self.logger.info("OCR enabled: tesseract")
-            except Exception as e:
-                self.ocr_enabled = False
-                self.logger.warning("Failed to init tesseract OCR: %s", e)
-            return
-
-        self.logger.warning("Unknown BOOKSCANNER_TEXT_BACKEND=%s", backend)
-        self.ocr_enabled = False
+        self.llm_backend = "transformers"
+        self.llm_initialized = True
+        self.logger.info("Transformers VLM initialized: %s", model_id)
+        return
 
     def _segment_and_prepare_books(
         self, image_path: str
@@ -361,23 +248,7 @@ If there's no book in the image, please type 'No book'."""
             enhanced_image.size[0],
             enhanced_image.size[1],
         )
-        cover_only = os.getenv("BOOKSCANNER_COVER_ONLY", "0").lower() in {
-            "1",
-            "true",
-            "yes",
-        }
-        segmentation_mask_data = None
-        source = "yolo"
-
-        if cover_only:
-            detector_result = self._detect_covers(enhanced_image, image_filename)
-            if detector_result is not None:
-                segmentation_mask_data = (None, detector_result)
-                source = "detector"
-                self.logger.info("Using detector-only boxes for %s", image_filename)
-
-        if segmentation_mask_data is None:
-            segmentation_mask_data = self._segment_books(enhanced_image, image_filename)
+        segmentation_mask_data = self._segment_books(enhanced_image, image_filename)
 
         if segmentation_mask_data is None:
             segmentation_mask_data = self._segment_books(scaled_image, image_filename)
@@ -390,26 +261,13 @@ If there's no book in the image, please type 'No book'."""
             segmentation_mask_data = self._segment_books(rotated, rotated_name)
             if segmentation_mask_data is not None:
                 enhanced_image = rotated
-
-        if segmentation_mask_data is None:
-            detector_result = self._detect_covers(enhanced_image, image_filename)
-            if detector_result is None:
-                self.logger.info("Detector returned no boxes for %s", image_filename)
-                return None
-            segmentation_mask_data = (None, detector_result)
-            source = "detector"
+                image_filename = rotated_name
 
         if segmentation_mask_data is None:
             return None
 
         masks, boxes = segmentation_mask_data
-        detector_data = None
-        if source == "detector":
-            detector_data = boxes
-            boxes = self._boxes_from_detector(detector_data)
-            self.logger.info("Skipping box filtering for detector results")
-        else:
-            boxes = self._select_boxes(boxes, enhanced_image.size)
+        boxes = self._select_boxes(boxes, enhanced_image.size)
 
         if boxes is None or len(boxes) == 0:
             self.logger.info("No boxes after filtering for %s", image_filename)
@@ -419,12 +277,8 @@ If there's no book in the image, please type 'No book'."""
         # Loop over each detected mask/box
         if masks is None or masks.data is None or masks.data.numel() == 0:
             for i, box in enumerate(boxes):  # type: ignore
-                if detector_data is not None:
-                    cropped_image = self._crop_box_xyxy(enhanced_image, box)
-                    cropped_image = self._rotate_if_spine_xyxy(cropped_image, box)
-                else:
-                    cropped_image = self._crop_box(enhanced_image, box)
-                    cropped_image = self._rotate_if_spine(cropped_image, box)
+                cropped_image = self._crop_box(enhanced_image, box)
+                cropped_image = self._rotate_if_spine(cropped_image, box)
 
                 cropped_image_path = os.path.abspath(
                     f"{self.output_dir}/book_{i + 1}.png"
@@ -465,7 +319,7 @@ If there's no book in the image, please type 'No book'."""
                 "YOLO model is not initialized, please call load_models() first."
             )
 
-        classes_env = os.getenv("BOOKSCANNER_YOLO_CLASSES", "").strip()
+        classes_env = os.getenv("BOOKSCANNER_YOLO_CLASSES", "73").strip()
         classes = None
         if classes_env:
             classes = [int(value) for value in classes_env.split(",")]
@@ -541,107 +395,6 @@ If there's no book in the image, please type 'No book'."""
 
         return masks, boxes  # type: ignore[return-value]
 
-    def _detect_covers(
-        self, image: Image.Image, image_filename: str
-    ) -> tuple[torch.Tensor, torch.Tensor, tuple[int, int]] | None:
-        """
-        Detect front-facing book covers using a zero-shot detector.
-        """
-        if (
-            not self.detector_initialized
-            or self.detector_model is None
-            or self.detector_processor is None
-        ):
-            return None
-
-        text = os.getenv(
-            "BOOKSCANNER_DETECTOR_PROMPT",
-            "book cover. front cover. paperback cover. hardcover book.",
-        )
-        box_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_BOX", "0.25"))
-        text_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_TEXT", "0.2"))
-        self.logger.info(
-            "Detector prompt='%s' box_threshold=%s text_threshold=%s",
-            text,
-            box_threshold,
-            text_threshold,
-        )
-
-        inputs = self.detector_processor(
-            images=image, text=text, return_tensors="pt"
-        ).to(self.detector_model.device)
-        with torch.no_grad():
-            outputs = self.detector_model(**inputs)
-
-        results = self.detector_processor.post_process_grounded_object_detection(
-            outputs,
-            inputs.input_ids,
-            box_threshold=box_threshold,
-            text_threshold=text_threshold,
-            target_sizes=[image.size[::-1]],
-        )
-
-        if not results:
-            return None
-
-        boxes = results[0]["boxes"]
-        scores_t = results[0]["scores"]
-
-        if boxes is None or len(boxes) == 0:
-            self.logger.info("Detector produced zero boxes for %s", image_filename)
-            return None
-
-        # Filter for likely front covers
-        width, height = image.size
-        img_area = float(width * height)
-        min_area = float(os.getenv("BOOKSCANNER_COVER_MIN_AREA", "0.02"))
-        min_aspect = float(os.getenv("BOOKSCANNER_COVER_MIN_ASPECT", "0.5"))
-        max_aspect = float(os.getenv("BOOKSCANNER_COVER_MAX_ASPECT", "1.7"))
-
-        box_w = (boxes[:, 2] - boxes[:, 0]).clamp(min=1)
-        box_h = (boxes[:, 3] - boxes[:, 1]).clamp(min=1)
-        box_area = box_w * box_h
-        aspect = box_h / box_w
-
-        keep_mask = (box_area >= (min_area * img_area)) & (
-            (aspect >= min_aspect) & (aspect <= max_aspect)
-        )
-        if keep_mask.sum() == 0:
-            self.logger.info(
-                "Detector filter too strict for %s; relaxing thresholds",
-                image_filename,
-            )
-            keep_mask = box_area >= (min_area * img_area)
-        if keep_mask.sum() == 0:
-            keep_mask = torch.ones_like(box_area, dtype=torch.bool)
-
-        boxes = boxes[keep_mask]
-        scores_t = scores_t[keep_mask]
-
-        # NMS to collapse duplicates
-        iou = float(os.getenv("BOOKSCANNER_COVER_NMS_IOU", "0.5"))
-        keep = nms(boxes, scores_t, iou)
-        boxes = boxes[keep]
-        scores_t = scores_t[keep]
-
-        # Single-cover mode: keep only the best box
-        if os.getenv("BOOKSCANNER_SINGLE_COVER", "1").lower() in {"1", "true", "yes"}:
-            # Prefer largest area when many boxes remain
-            areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
-            best_idx = int(torch.argmax(areas).item())
-            boxes = boxes[best_idx : best_idx + 1]
-            scores_t = scores_t[best_idx : best_idx + 1]
-
-        overlay = image.copy()
-        draw = ImageDraw.Draw(overlay)
-        for b in boxes:
-            draw.rectangle(b.tolist(), outline="red", width=3)
-        overlay.save(f"{self.output_dir}/segmentation/{image_filename}")
-
-        orig_shape = (image.size[1], image.size[0])
-        # Return raw tensors to avoid ultralytics Boxes constructor issues.
-        return boxes, scores_t, orig_shape
-
     def _enhance_image(self, image: Image.Image) -> Image.Image:
         """
         Enhance contrast and brightness for better OCR/VLM results.
@@ -685,81 +438,38 @@ If there's no book in the image, please type 'No book'."""
         """
         Recognize the title and author from a cropped book image.
         """
-        if self.ocr_enabled:
-            return self._recognize_book_ocr(image_path)
-
         if not self.llm_initialized:
             raise RuntimeError(
-                "LLM model is not initialized. Enable BOOKSCANNER_TEXT_BACKEND=tesseract or set BOOKSCANNER_DISABLE_LLM=0."
+                "LLM model is not initialized. Set BOOKSCANNER_DISABLE_LLM=0."
             )
+        from transformers.image_utils import load_image
 
-        if self.llm_backend == "llama-cpp":
-            response = self.llm.create_chat_completion(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": self.prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": image_to_base64(image_path)},
-                            },
-                        ],
-                    }
-                ]
-            )
-
-            message_content: str = response["choices"][0]["message"]["content"]  # type: ignore
-            return message_content.strip()
-
-        if self.llm_backend == "transformers":
-            from transformers.image_utils import load_image
-
-            image = load_image(image_path)
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image", "image": image},
-                        {"type": "text", "text": self.prompt},
-                    ],
-                }
-            ]
-            prompt = self.processor.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-            inputs = self.processor(
-                text=[prompt], images=[image], return_tensors="pt"
-            ).to(self.tf_model.device)
-            generated_ids = self.tf_model.generate(
-                **inputs,
-                max_new_tokens=int(os.getenv("BOOKSCANNER_LLM_MAX_TOKENS", "48")),
-                do_sample=False,
-            )
-            prompt_len = inputs["input_ids"].shape[1]
-            output = self.processor.batch_decode(
-                generated_ids[:, prompt_len:], skip_special_tokens=True
-            )[0]
-            return output.strip()
-
-        raise RuntimeError("Unsupported LLM backend configuration.")
-
-    def _recognize_book_ocr(self, image_path: str) -> str:
-        """
-        Lightweight OCR fallback using Tesseract.
-        """
-        import pytesseract
-
-        image = Image.open(image_path).convert("RGB")
-        # Improve contrast for OCR
-        image = ImageEnhance.Contrast(image).enhance(1.8)
-        image = ImageEnhance.Brightness(image).enhance(1.1)
-
-        text = pytesseract.image_to_string(image, config="--psm 6")
-        text = " ".join(line.strip() for line in text.splitlines() if line.strip())
-        if not text:
-            return "No book"
-        return text
+        image = load_image(image_path)
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image},
+                    {"type": "text", "text": self.prompt},
+                ],
+            }
+        ]
+        prompt = self.processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        inputs = self.processor(
+            text=[prompt], images=[image], return_tensors="pt"
+        ).to(self.tf_model.device)
+        generated_ids = self.tf_model.generate(
+            **inputs,
+            max_new_tokens=int(os.getenv("BOOKSCANNER_LLM_MAX_TOKENS", "48")),
+            do_sample=False,
+        )
+        prompt_len = inputs["input_ids"].shape[1]
+        output = self.processor.batch_decode(
+            generated_ids[:, prompt_len:], skip_special_tokens=True
+        )[0]
+        return output.strip()
 
     def _rotate_if_spine(
         self, image: Image.Image, box_data, threshold: float = 2.0
@@ -779,36 +489,6 @@ If there's no book in the image, please type 'No book'."""
         if aspect_ratio > threshold:
             return image.rotate(90, expand=True)
 
-        return image
-
-    def _boxes_from_detector(
-        self, detector_data: tuple[torch.Tensor, torch.Tensor, tuple[int, int]]
-    ) -> list[tuple[float, float, float, float]]:
-        boxes, _, _ = detector_data
-        return [tuple(map(float, box.tolist())) for box in boxes]
-
-    def _crop_box_xyxy(
-        self, image: Image.Image, box: tuple[float, float, float, float]
-    ) -> Image.Image:
-        x1, y1, x2, y2 = [int(v) for v in box]
-        return image.crop((x1, y1, x2, y2))
-
-    def _rotate_if_spine_xyxy(
-        self,
-        image: Image.Image,
-        box: tuple[float, float, float, float],
-        threshold: float = 2.0,
-    ) -> Image.Image:
-        x1, y1, x2, y2 = box
-        width = float(x2 - x1)
-        height = float(y2 - y1)
-
-        if width <= 0:
-            return image
-
-        aspect_ratio = height / width
-        if aspect_ratio > threshold:
-            return image.rotate(90, expand=True)
         return image
 
     def _select_boxes(self, boxes: Boxes, image_size: tuple[int, int]) -> Boxes:
@@ -834,9 +514,9 @@ If there's no book in the image, please type 'No book'."""
         min_area = float(os.getenv("BOOKSCANNER_MIN_BOX_AREA", "0.002"))
         keep = areas >= (min_area * img_area)
 
-        # Prefer cover-like boxes: not too thin or too tall
-        max_aspect = float(os.getenv("BOOKSCANNER_MAX_ASPECT", "3.5"))
-        min_aspect = float(os.getenv("BOOKSCANNER_MIN_ASPECT", "0.4"))
+        # Prefer book spines: allow tall boxes by default
+        max_aspect = float(os.getenv("BOOKSCANNER_MAX_ASPECT", "8.0"))
+        min_aspect = float(os.getenv("BOOKSCANNER_MIN_ASPECT", "0.2"))
         keep = keep & (aspect <= max_aspect) & (aspect >= min_aspect)
 
         if keep.sum() == 0:

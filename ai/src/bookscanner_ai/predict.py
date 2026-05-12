@@ -187,7 +187,7 @@ If there's no book in the image, please type 'No book'."""
 
     def _init_llm(self) -> None:
         """
-        Initialize a vision-language model using transformers only.
+        Initialize a vision-language model using transformers.
         """
         if self.llm_initialized:
             return
@@ -258,6 +258,7 @@ If there's no book in the image, please type 'No book'."""
         finally:
             self.detector_initialized = True
 
+
     def _segment_and_prepare_books(
         self, image_path: str
     ) -> tuple[str, list[str]] | None:
@@ -268,7 +269,7 @@ If there's no book in the image, please type 'No book'."""
         original_image = Image.open(image_path).convert("RGB")
 
         # Scale image if too large
-        max_dim = int(os.getenv("BOOKSCANNER_MAX_DIM", "4096"))
+        max_dim = int(os.getenv("BOOKSCANNER_MAX_DIM", "3200"))
         if original_image.size[0] > max_dim or original_image.size[1] > max_dim:
             scaled_image = scale_image(original_image, (max_dim, max_dim))
         else:
@@ -313,7 +314,14 @@ If there's no book in the image, please type 'No book'."""
             segmentation_mask_data = self._segment_books(rotated, rotated_name)
             if segmentation_mask_data is not None:
                 enhanced_image = rotated
-                image_filename = rotated_name
+
+        if segmentation_mask_data is None:
+            detector_result = self._detect_covers(enhanced_image, image_filename)
+            if detector_result is None:
+                self.logger.info("Detector returned no boxes for %s", image_filename)
+                return None
+            segmentation_mask_data = (None, detector_result)
+            source = "detector"
 
         if segmentation_mask_data is None:
             return None
@@ -476,6 +484,107 @@ If there's no book in the image, please type 'No book'."""
 
         return masks, boxes  # type: ignore[return-value]
 
+    def _detect_covers(
+        self, image: Image.Image, image_filename: str
+    ) -> tuple[torch.Tensor, torch.Tensor, tuple[int, int]] | None:
+        """
+        Detect front-facing book covers using a zero-shot detector.
+        """
+        if (
+            not self.detector_initialized
+            or self.detector_model is None
+            or self.detector_processor is None
+        ):
+            return None
+
+        text = os.getenv(
+            "BOOKSCANNER_DETECTOR_PROMPT",
+            "book cover. front cover. paperback cover. hardcover book.",
+        )
+        box_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_BOX", "0.25"))
+        text_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_TEXT", "0.2"))
+        self.logger.info(
+            "Detector prompt='%s' box_threshold=%s text_threshold=%s",
+            text,
+            box_threshold,
+            text_threshold,
+        )
+
+        inputs = self.detector_processor(
+            images=image, text=text, return_tensors="pt"
+        ).to(self.detector_model.device)
+        with torch.no_grad():
+            outputs = self.detector_model(**inputs)
+
+        results = self.detector_processor.post_process_grounded_object_detection(
+            outputs,
+            inputs.input_ids,
+            box_threshold=box_threshold,
+            text_threshold=text_threshold,
+            target_sizes=[image.size[::-1]],
+        )
+
+        if not results:
+            return None
+
+        boxes = results[0]["boxes"]
+        scores_t = results[0]["scores"]
+
+        if boxes is None or len(boxes) == 0:
+            self.logger.info("Detector produced zero boxes for %s", image_filename)
+            return None
+
+        # Filter for likely front covers
+        width, height = image.size
+        img_area = float(width * height)
+        min_area = float(os.getenv("BOOKSCANNER_COVER_MIN_AREA", "0.02"))
+        min_aspect = float(os.getenv("BOOKSCANNER_COVER_MIN_ASPECT", "0.5"))
+        max_aspect = float(os.getenv("BOOKSCANNER_COVER_MAX_ASPECT", "1.7"))
+
+        box_w = (boxes[:, 2] - boxes[:, 0]).clamp(min=1)
+        box_h = (boxes[:, 3] - boxes[:, 1]).clamp(min=1)
+        box_area = box_w * box_h
+        aspect = box_h / box_w
+
+        keep_mask = (box_area >= (min_area * img_area)) & (
+            (aspect >= min_aspect) & (aspect <= max_aspect)
+        )
+        if keep_mask.sum() == 0:
+            self.logger.info(
+                "Detector filter too strict for %s; relaxing thresholds",
+                image_filename,
+            )
+            keep_mask = box_area >= (min_area * img_area)
+        if keep_mask.sum() == 0:
+            keep_mask = torch.ones_like(box_area, dtype=torch.bool)
+
+        boxes = boxes[keep_mask]
+        scores_t = scores_t[keep_mask]
+
+        # NMS to collapse duplicates
+        iou = float(os.getenv("BOOKSCANNER_COVER_NMS_IOU", "0.5"))
+        keep = nms(boxes, scores_t, iou)
+        boxes = boxes[keep]
+        scores_t = scores_t[keep]
+
+        # Single-cover mode: keep only the best box
+        if os.getenv("BOOKSCANNER_SINGLE_COVER", "1").lower() in {"1", "true", "yes"}:
+            # Prefer largest area when many boxes remain
+            areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+            best_idx = int(torch.argmax(areas).item())
+            boxes = boxes[best_idx : best_idx + 1]
+            scores_t = scores_t[best_idx : best_idx + 1]
+
+        overlay = image.copy()
+        draw = ImageDraw.Draw(overlay)
+        for b in boxes:
+            draw.rectangle(b.tolist(), outline="red", width=3)
+        overlay.save(f"{self.output_dir}/segmentation/{image_filename}")
+
+        orig_shape = (image.size[1], image.size[0])
+        # Return raw tensors to avoid ultralytics Boxes constructor issues.
+        return boxes, scores_t, orig_shape
+
     def _enhance_image(self, image: Image.Image) -> Image.Image:
         """
         Enhance contrast and brightness for better OCR/VLM results.
@@ -523,9 +632,12 @@ If there's no book in the image, please type 'No book'."""
             raise RuntimeError(
                 "LLM model is not initialized. Set BOOKSCANNER_DISABLE_LLM=0."
             )
+        if self.llm_backend != "transformers":
+            raise RuntimeError("Unsupported LLM backend configuration.")
+
         from transformers.image_utils import load_image
 
-        image = load_image(image_path)
+        image = self._resize_for_vlm(load_image(image_path))
         messages = [
             {
                 "role": "user",
@@ -550,95 +662,41 @@ If there's no book in the image, please type 'No book'."""
         output = self.processor.batch_decode(
             generated_ids[:, prompt_len:], skip_special_tokens=True
         )[0]
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         return output.strip()
 
-    def _detect_covers(
-        self, image: Image.Image, image_filename: str
-    ) -> tuple[torch.Tensor, torch.Tensor, tuple[int, int]] | None:
+    def _resize_for_vlm(self, image: Image.Image) -> Image.Image:
         """
-        Detect front-facing book covers using a zero-shot detector.
+        Reduce image size to avoid CUDA OOM.
         """
-        if (
-            not self.detector_initialized
-            or self.detector_model is None
-            or self.detector_processor is None
-        ):
-            return None
+        max_dim = int(os.getenv("BOOKSCANNER_VLM_MAX_DIM", "1280"))
+        if image.size[0] <= max_dim and image.size[1] <= max_dim:
+            return image
+        resized = image.copy()
+        resized.thumbnail((max_dim, max_dim))
+        return resized
 
-        text = os.getenv(
-            "BOOKSCANNER_DETECTOR_PROMPT",
-            "book cover. front cover. book spine. hardcover book. paperback book.",
-        )
-        box_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_BOX", "0.2"))
-        text_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_TEXT", "0.2"))
-        self.logger.info(
-            "Detector prompt='%s' box_threshold=%s text_threshold=%s",
-            text,
-            box_threshold,
-            text_threshold,
-        )
 
-        inputs = self.detector_processor(
-            images=image, text=text, return_tensors="pt"
-        ).to(self.detector_model.device)
-        with torch.no_grad():
-            outputs = self.detector_model(**inputs)
+    def _rotate_if_spine(
+        self, image: Image.Image, box_data, threshold: float = 2.0
+    ) -> Image.Image:
+        """
+        Rotate image if it is likely a vertical spine based on aspect ratio.
+        """
+        x1, y1, x2, y2 = box_data.xyxy[0]
+        width, height = (x2 - x1), (y2 - y1)
 
-        results = self.detector_processor.post_process_grounded_object_detection(
-            outputs,
-            inputs.input_ids,
-            box_threshold=box_threshold,
-            text_threshold=text_threshold,
-            target_sizes=[image.size[::-1]],
-        )
+        # Avoid division by zero in degenerate boxes
+        if float(width) <= 0:
+            return image
 
-        if not results:
-            return None
+        aspect_ratio = float(height) / float(width)
 
-        boxes = results[0]["boxes"]
-        scores_t = results[0]["scores"]
+        if aspect_ratio > threshold:
+            return image.rotate(90, expand=True)
 
-        if boxes is None or len(boxes) == 0:
-            self.logger.info("Detector produced zero boxes for %s", image_filename)
-            return None
-
-        # Filter for likely covers/spines
-        width, height = image.size
-        img_area = float(width * height)
-        min_area = float(os.getenv("BOOKSCANNER_COVER_MIN_AREA", "0.01"))
-        min_aspect = float(os.getenv("BOOKSCANNER_COVER_MIN_ASPECT", "0.2"))
-        max_aspect = float(os.getenv("BOOKSCANNER_COVER_MAX_ASPECT", "8.0"))
-
-        box_w = (boxes[:, 2] - boxes[:, 0]).clamp(min=1)
-        box_h = (boxes[:, 3] - boxes[:, 1]).clamp(min=1)
-        box_area = box_w * box_h
-        aspect = box_h / box_w
-
-        keep_mask = (box_area >= (min_area * img_area)) & (
-            (aspect >= min_aspect) & (aspect <= max_aspect)
-        )
-        if keep_mask.sum() == 0:
-            keep_mask = box_area >= (min_area * img_area)
-        if keep_mask.sum() == 0:
-            keep_mask = torch.ones_like(box_area, dtype=torch.bool)
-
-        boxes = boxes[keep_mask]
-        scores_t = scores_t[keep_mask]
-
-        # NMS to collapse duplicates
-        iou = float(os.getenv("BOOKSCANNER_COVER_NMS_IOU", "0.5"))
-        keep = nms(boxes, scores_t, iou)
-        boxes = boxes[keep]
-        scores_t = scores_t[keep]
-
-        overlay = image.copy()
-        draw = ImageDraw.Draw(overlay)
-        for b in boxes:
-            draw.rectangle(b.tolist(), outline="red", width=3)
-        overlay.save(f"{self.output_dir}/segmentation/{image_filename}")
-
-        orig_shape = (image.size[1], image.size[0])
-        return boxes, scores_t, orig_shape
+        return image
 
     def _boxes_from_detector(
         self, detector_data: tuple[torch.Tensor, torch.Tensor, tuple[int, int]]
@@ -670,26 +728,6 @@ If there's no book in the image, please type 'No book'."""
             return image.rotate(90, expand=True)
         return image
 
-    def _rotate_if_spine(
-        self, image: Image.Image, box_data, threshold: float = 2.0
-    ) -> Image.Image:
-        """
-        Rotate image if it is likely a vertical spine based on aspect ratio.
-        """
-        x1, y1, x2, y2 = box_data.xyxy[0]
-        width, height = (x2 - x1), (y2 - y1)
-
-        # Avoid division by zero in degenerate boxes
-        if float(width) <= 0:
-            return image
-
-        aspect_ratio = float(height) / float(width)
-
-        if aspect_ratio > threshold:
-            return image.rotate(90, expand=True)
-
-        return image
-
     def _select_boxes(self, boxes: Boxes, image_size: tuple[int, int]) -> Boxes:
         """
         Filter and prioritize boxes to improve cover detection.
@@ -713,9 +751,9 @@ If there's no book in the image, please type 'No book'."""
         min_area = float(os.getenv("BOOKSCANNER_MIN_BOX_AREA", "0.002"))
         keep = areas >= (min_area * img_area)
 
-        # Prefer book spines: allow tall boxes by default
-        max_aspect = float(os.getenv("BOOKSCANNER_MAX_ASPECT", "10.0"))
-        min_aspect = float(os.getenv("BOOKSCANNER_MIN_ASPECT", "0.2"))
+        # Prefer cover-like boxes: not too thin or too tall
+        max_aspect = float(os.getenv("BOOKSCANNER_MAX_ASPECT", "3.5"))
+        min_aspect = float(os.getenv("BOOKSCANNER_MIN_ASPECT", "0.4"))
         keep = keep & (aspect <= max_aspect) & (aspect >= min_aspect)
 
         if keep.sum() == 0:

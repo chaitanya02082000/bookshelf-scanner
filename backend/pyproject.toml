@@ -21,11 +21,6 @@ name = "pytorch-cu124"
 url = "https://download.pytorch.org/whl/cu124"
 priority = "explicit"
 
-[[tool.poetry.source]]
-name = "llama-cpp-python-cu124"
-url = "https://abetlen.github.io/llama-cpp-python/whl/cu124"
-priority = "explicit"
-
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

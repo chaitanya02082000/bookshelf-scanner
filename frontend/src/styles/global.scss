@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap");
+
 /* You can add global styles to this file, and also import other style files */
 @tailwind base;
 @tailwind components;
@@ -5,31 +7,31 @@
 
 :root {
   color-scheme: dark;
-  --bs-ink: #f4efe7;
-  --bs-ink-soft: #d9cbb9;
-  --bs-ink-faded: #b6a28c;
-  --bs-bg: #120e0b;
-  --bs-bg-strong: #0e0b09;
-  --bs-surface: #1a1411;
-  --bs-surface-raised: #231a14;
-  --bs-surface-soft: #2a2018;
-  --bs-accent: #b07a5e;
-  --bs-accent-strong: #d2a183;
-  --bs-border: rgba(244, 239, 231, 0.14);
-  --bs-border-strong: rgba(244, 239, 231, 0.22);
-  --bs-shadow: 0 24px 48px rgba(3, 2, 2, 0.6);
-  --bs-shadow-soft: 0 12px 24px rgba(3, 2, 2, 0.45);
-  --bs-radius-lg: 1.5rem;
-  --bs-radius-md: 1rem;
-  --bs-radius-sm: 0.75rem;
+  --bs-ink: oklch(0.92 0.03 86);
+  --bs-ink-soft: oklch(0.82 0.03 82);
+  --bs-ink-faded: oklch(0.7 0.02 82);
+  --bs-bg: oklch(0.17 0.02 70);
+  --bs-bg-strong: oklch(0.13 0.02 68);
+  --bs-surface: oklch(0.21 0.02 72);
+  --bs-surface-raised: oklch(0.25 0.025 74);
+  --bs-surface-soft: oklch(0.28 0.025 74);
+  --bs-accent: oklch(0.68 0.08 78);
+  --bs-accent-strong: oklch(0.75 0.1 78);
+  --bs-border: oklch(0.85 0.02 82 / 0.16);
+  --bs-border-strong: oklch(0.85 0.02 82 / 0.28);
+  --bs-shadow: 0 18px 40px oklch(0.08 0.02 60 / 0.6);
+  --bs-shadow-soft: 0 10px 24px oklch(0.08 0.02 60 / 0.5);
+  --bs-radius-lg: 0;
+  --bs-radius-md: 0;
+  --bs-radius-sm: 0;
   --bs-space-1: 0.5rem;
   --bs-space-2: 1rem;
   --bs-space-3: 1.5rem;
   --bs-space-4: 2rem;
   --bs-space-5: 2.5rem;
   --bs-space-6: 3rem;
-  --bs-font-heading: "Fraunces", "Times New Roman", serif;
-  --bs-font-body: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --bs-font-heading: "Cormorant Garamond", "Times New Roman", serif;
+  --bs-font-body: "Source Sans 3", system-ui, -apple-system, sans-serif;
   --bs-type-h1: 2.5rem;
   --bs-type-h2: 2rem;
   --bs-type-h3: 1.5rem;
@@ -45,8 +47,10 @@ body {
   font-size: var(--bs-type-body);
   line-height: var(--bs-line-body);
   color: var(--bs-ink);
-  background: radial-gradient(circle at 20% 10%, rgba(176, 122, 94, 0.12), transparent 45%),
-    linear-gradient(160deg, var(--bs-bg) 0%, #18110c 55%, #221813 100%);
+  background:
+    radial-gradient(circle at 12% 8%, oklch(0.62 0.07 78 / 0.18), transparent 45%),
+    radial-gradient(circle at 85% 15%, oklch(0.4 0.05 65 / 0.22), transparent 55%),
+    linear-gradient(165deg, var(--bs-bg) 0%, oklch(0.18 0.02 68) 55%, oklch(0.2 0.02 72) 100%);
   min-height: 100vh;
 }
 
@@ -88,13 +92,20 @@ a {
 }
 
 ::selection {
-  background: rgba(176, 122, 94, 0.45);
-  color: #fffaf5;
+  background: oklch(0.7 0.08 78 / 0.5);
+  color: oklch(0.96 0.02 90);
 }
 
 button,
 input {
   font-family: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--bs-accent-strong);
+  outline-offset: 2px;
 }
 
 * {

@@ -31,16 +31,16 @@
         read each book.
       </p>
       <div class="upload__steps">
-        <span>1. Upload shelf</span>
-        <span>2. Segment spines</span>
-        <span>3. Extract titles</span>
+        <span>01 Upload shelf</span>
+        <span>02 Segment spines</span>
+        <span>03 Extract titles</span>
       </div>
     </div>
   </section>
 
   <section class="upload__grid">
     <form
-      class="upload__card"
+      class="upload__card upload__card--form"
       [formGroup]="uploadForm"
       (ngSubmit)="submitForm()"
     >
@@ -107,7 +107,7 @@
       }
     </form>
 
-    <div class="upload__card upload__results">
+    <div class="upload__card upload__card--results upload__results">
       <div class="upload__card-header">
         <h3>Detected titles</h3>
         <p>Titles appear as they are recognized.</p>
@@ -136,7 +136,7 @@
       }
     </div>
 
-    <div class="upload__card upload__review">
+    <div class="upload__card upload__card--review upload__review">
       <div class="upload__card-header">
         <h3>Needs review</h3>
         <p>Low confidence matches are queued here.</p>

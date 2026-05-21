@@ -20,9 +20,7 @@
         <button
           type="button"
           class="shell-header__logout"
-          (click)="
-            auth.logout({logoutParams: {returnTo: window.location.origin}})
-          "
+          (click)="auth.logout({logoutParams: {returnTo: logoutReturnTo}})"
         >
           Logout
         </button>

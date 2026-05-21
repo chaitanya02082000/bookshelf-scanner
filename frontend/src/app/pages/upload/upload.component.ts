@@ -25,6 +25,8 @@ export class UploadComponent implements OnDestroy {
   public readonly pendingSearchCount = signal(0);
   public readonly errorMessage = signal("");
   public readonly isProcessing = signal(false);
+  public readonly reviewOpen = signal(false);
+  public readonly scanPanelOpen = signal(false);
   public readonly uploadedImageSrc = signal<string | null>(null);
   public readonly predictedImageSrc = signal<string | null>(null);
 
@@ -70,6 +72,8 @@ export class UploadComponent implements OnDestroy {
       return;
     }
 
+    this.reviewOpen.set(false);
+    this.scanPanelOpen.set(false);
     this.predictedImageSrc.set(null);
     this.pendingMatches.set([]);
     this.pendingSearchCount.set(0);
@@ -327,6 +331,7 @@ export class UploadComponent implements OnDestroy {
       },
       ...matches,
     ]);
+    this.reviewOpen.set(true);
   }
 
   addPendingToLibrary(entry: PendingMatch) {
@@ -338,9 +343,32 @@ export class UploadComponent implements OnDestroy {
   }
 
   removePending(id: string) {
-    this.pendingMatches.update((matches) =>
-      matches.filter((match) => match.id !== id)
-    );
+    this.pendingMatches.update((matches) => {
+      const next = matches.filter((match) => match.id !== id);
+      if (!next.length) {
+        this.reviewOpen.set(false);
+      }
+      return next;
+    });
+  }
+
+  openReview() {
+    if (!this.pendingMatches().length) {
+      return;
+    }
+    this.reviewOpen.set(true);
+  }
+
+  closeReview() {
+    this.reviewOpen.set(false);
+  }
+
+  openScanPanel() {
+    this.scanPanelOpen.set(true);
+  }
+
+  closeScanPanel() {
+    this.scanPanelOpen.set(false);
   }
 
   private pushNotification(message: string) {

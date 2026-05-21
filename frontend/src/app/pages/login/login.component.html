@@ -25,16 +25,12 @@
         }
 
         <div class="login__actions">
-          <button class="login__primary" (click)="auth.loginWithRedirect()">
+          <button class="login__primary" (click)="login()">
             Continue with Auth0
           </button>
           <button
             class="login__secondary"
-            (click)="
-              auth.loginWithRedirect({
-                authorizationParams: {screen_hint: 'signup'},
-              })
-            "
+            (click)="signup()"
           >
             Create account
           </button>

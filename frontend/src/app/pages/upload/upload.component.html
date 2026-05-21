@@ -11,44 +11,12 @@
       }
     </div>
   }
-  <header class="app-header">
-    <div>
-      <p class="app-header__eyebrow">BookShelf Scanner</p>
-      <h2 class="app-header__title">Book Recognizer</h2>
-      <p class="app-header__subtitle">
-        Turn a full bookshelf into a clean, searchable reading list.
-      </p>
-    </div>
-    <div class="app-header__actions"></div>
-  </header>
-
-  <section class="upload__hero">
-    <div class="upload__hero-card">
-      <p class="upload__eyebrow">Scan & catalog</p>
-      <h2>Capture every spine in one pass.</h2>
-      <p>
-        Upload a bookshelf image and watch the titles stream in as we segment and
-        read each book.
-      </p>
-      <div class="upload__steps">
-        <span>01 Upload shelf</span>
-        <span>02 Segment spines</span>
-        <span>03 Extract titles</span>
-      </div>
-    </div>
-  </section>
-
   <section class="upload__grid">
     <form
-      class="upload__card upload__card--form"
+      class="upload__form"
       [formGroup]="uploadForm"
       (ngSubmit)="submitForm()"
     >
-      <div class="upload__card-header">
-        <h3>Upload a bookshelf image</h3>
-        <p>JPEG or PNG, ideally full shelf and straight-on.</p>
-      </div>
-
       <label class="upload__dropzone" for="bookshelf-file">
         <input
           id="bookshelf-file"
@@ -75,23 +43,15 @@
         </div>
       </label>
 
-      <div class="upload__actions">
+      @if (pendingMatches().length) {
         <button
-          class="upload__primary"
-          type="submit"
-          [disabled]="!selectedFile() || isProcessing()"
-        >
-          Start scan
-        </button>
-        <button
-          class="upload__secondary"
+          class="upload__review-trigger"
           type="button"
-          (click)="cancelProcess()"
-          [disabled]="!isProcessing()"
+          (click)="openReview()"
         >
-          Cancel
+          Review matches ({{ pendingMatches().length }})
         </button>
-      </div>
+      }
 
       @if (isProcessing()) {
         <div class="upload__status">
@@ -107,140 +67,143 @@
       }
     </form>
 
-    <div class="upload__card upload__card--results upload__results">
-      <div class="upload__card-header">
-        <h3>Detected titles</h3>
-        <p>Titles appear as they are recognized.</p>
-      </div>
-
-      @if (isProcessing() && results().length === 0) {
-        <div class="skeleton-stack">
-          <div class="skeleton-line skeleton-line--wide"></div>
-          <div class="skeleton-line"></div>
-          <div class="skeleton-line skeleton-line--short"></div>
-          <div class="skeleton-line"></div>
-          <div class="skeleton-line skeleton-line--wide"></div>
-        </div>
-      }
-
-      @if (results().length === 0) {
-        <div class="upload__empty">
-          <p>No results yet. Upload a shelf to begin.</p>
-        </div>
-      } @else {
-        <ul class="results-container">
-          @for (result of results(); track result) {
-            <li class="result-row">{{ result }}</li>
-          }
-        </ul>
-      }
-    </div>
-
-    <div class="upload__card upload__card--review upload__review">
-      <div class="upload__card-header">
-        <h3>Needs review</h3>
-        <p>Low confidence matches are queued here.</p>
-      </div>
-
-      @if (pendingSearchCount() > 0 && pendingMatches().length === 0) {
-        <div class="review-skeleton">
-          <div class="skeleton-line skeleton-line--wide"></div>
-          <div class="skeleton-line"></div>
-          <div class="skeleton-line skeleton-line--short"></div>
-        </div>
-      }
-
-      @if (pendingMatches().length === 0) {
-        <div class="upload__empty">
-          <p>No items waiting for review.</p>
-        </div>
-      } @else {
-        <ul class="review-list">
-          @for (match of pendingMatches(); track match.id) {
-            <li class="review-card">
-              <div class="review-card__info">
-                <p class="review-card__title">{{ match.parsedTitle }}</p>
-                @if (match.parsedAuthor) {
-                  <p class="review-card__author">by {{ match.parsedAuthor }}</p>
-                }
-                <p class="review-card__meta">
-                  {{ match.reason }} · Confidence {{ match.confidence | number: "1.0-2" }}
-                </p>
-              </div>
-              @if (match.candidate) {
-                <div class="review-card__candidate">
-                  <p class="review-card__candidate-label">Suggested match</p>
-                  <p class="review-card__candidate-title">
-                    {{ match.candidate.title }}
-                  </p>
-                  <p class="review-card__candidate-author">
-                    {{ match.candidate.authors[0] }}
-                  </p>
-                </div>
-              }
-              <div class="review-card__actions">
-                @if (match.candidate) {
-                  <button
-                    class="review-card__primary"
-                    type="button"
-                    (click)="addPendingToLibrary(match)"
-                  >
-                    Add to library
-                  </button>
-                }
-                <button
-                  class="review-card__secondary"
-                  type="button"
-                  (click)="removePending(match.id)"
-                >
-                  Dismiss
-                </button>
-              </div>
-            </li>
-          }
-        </ul>
-      }
-    </div>
   </section>
 
-  <section class="upload__images">
-    <div class="image-card">
-      <div class="image-card__header">
-        <h4>Original image</h4>
-        <p>Your upload preview</p>
-      </div>
-      @if (uploadedImageSrc()) {
-        <img
-          class="image"
-          [src]="uploadedImageSrc()"
-          alt="Uploaded image preview"
-        />
-      } @else {
-        <div class="image-card__placeholder">No image yet</div>
-      }
-    </div>
+  @if (scanPanelOpen()) {
+    <div class="scan-panel" role="dialog" aria-modal="true">
+      <div class="scan-panel__overlay" (click)="closeScanPanel()"></div>
+      <div class="scan-panel__panel">
+        <header class="scan-panel__header">
+          <div class="scan-panel__handle"></div>
+          <div>
+            <p class="scan-panel__eyebrow">Scan output</p>
+            <h3>Segmented shelf</h3>
+            <p>Detected titles appear below the image.</p>
+          </div>
+          <button
+            type="button"
+            class="scan-panel__close"
+            (click)="closeScanPanel()"
+          >
+            Close
+          </button>
+        </header>
 
-    <div class="image-card">
-      <div class="image-card__header">
-        <h4>Segmented shelf</h4>
-        <p>Spines detected by the model</p>
-      </div>
-      @if (predictedImageSrc()) {
-        <img
-          class="image"
-          [src]="predictedImageSrc()"
-          alt="Predicted image preview"
-        />
-      } @else if (isProcessing()) {
-        <div class="image-card__placeholder image-card__placeholder--loading">
-          <div class="image-card__loader">
-            <span>Developing segments</span>
-            <span class="image-card__loader-subtitle">Scanning spines under lamplight</span>
+        <div class="scan-panel__body">
+          @if (predictedImageSrc()) {
+            <img
+              class="scan-panel__image"
+              [src]="predictedImageSrc()"
+              alt="Segmented shelf preview"
+            />
+          } @else if (isProcessing()) {
+            <div class="image-card__placeholder image-card__placeholder--loading">
+              <div class="image-card__loader">
+                <span>Developing segments</span>
+                <span class="image-card__loader-subtitle">Scanning spines under lamplight</span>
+              </div>
+            </div>
+          } @else {
+            <div class="image-card__placeholder">Waiting for prediction</div>
+          }
+
+          <div class="scan-panel__titles">
+            <p class="scan-panel__titles-label">Detected titles</p>
+            @if (results().length === 0) {
+              <p class="scan-panel__empty">No titles yet.</p>
+            } @else {
+              <ul class="scan-panel__list">
+                @for (result of results(); track result) {
+                  <li class="scan-panel__list-item">{{ result }}</li>
+                }
+              </ul>
+            }
           </div>
         </div>
-      } @else {
-        <div class="image-card__placeholder">Waiting for prediction</div>
-      }
+      </div>
     </div>
-  </section>
+  }
+
+  @if (reviewOpen()) {
+    <div class="review-modal" role="dialog" aria-modal="true">
+      <div class="review-modal__overlay" (click)="closeReview()"></div>
+      <div class="review-modal__panel">
+        <header class="review-modal__header">
+          <div>
+            <p class="review-modal__eyebrow">Needs review</p>
+            <h3>Confirm matches</h3>
+            <p>Low confidence matches from this scan.</p>
+          </div>
+          <button
+            type="button"
+            class="review-modal__close"
+            (click)="closeReview()"
+          >
+            Close
+          </button>
+        </header>
+
+        <div class="review-modal__body">
+          @if (pendingSearchCount() > 0 && pendingMatches().length === 0) {
+            <div class="review-skeleton">
+              <div class="skeleton-line skeleton-line--wide"></div>
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line skeleton-line--short"></div>
+            </div>
+          }
+
+          @if (pendingMatches().length === 0) {
+            <div class="upload__empty">
+              <p>No items waiting for review.</p>
+            </div>
+          } @else {
+            <ul class="review-list">
+              @for (match of pendingMatches(); track match.id) {
+                <li class="review-card">
+                  <div class="review-card__info">
+                    <p class="review-card__title">{{ match.parsedTitle }}</p>
+                    @if (match.parsedAuthor) {
+                      <p class="review-card__author">by {{ match.parsedAuthor }}</p>
+                    }
+                    <p class="review-card__meta">
+                      {{ match.reason }} · Confidence {{ match.confidence | number: "1.0-2" }}
+                    </p>
+                  </div>
+                  @if (match.candidate) {
+                    <div class="review-card__candidate">
+                      <p class="review-card__candidate-label">Suggested match</p>
+                      <p class="review-card__candidate-title">
+                        {{ match.candidate.title }}
+                      </p>
+                      <p class="review-card__candidate-author">
+                        {{ match.candidate.authors[0] }}
+                      </p>
+                    </div>
+                  }
+                  <div class="review-card__actions">
+                    @if (match.candidate) {
+                      <button
+                        class="review-card__primary"
+                        type="button"
+                        (click)="addPendingToLibrary(match)"
+                      >
+                        Add to library
+                      </button>
+                    }
+                    <button
+                      class="review-card__secondary"
+                      type="button"
+                      (click)="removePending(match.id)"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </li>
+              }
+            </ul>
+          }
+        </div>
+      </div>
+    </div>
+  }
 </main>

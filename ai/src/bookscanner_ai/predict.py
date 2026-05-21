@@ -268,6 +268,11 @@ If there's no book in the image, please type 'No book'."""
         """
         original_image = Image.open(image_path).convert("RGB")
 
+        # Upscale tiny images for better detection
+        min_dim = int(os.getenv("BOOKSCANNER_MIN_DIM", "640"))
+        if original_image.size[0] < min_dim or original_image.size[1] < min_dim:
+            original_image = self._upscale_min_dim(original_image, min_dim)
+
         # Scale image if too large
         max_dim = int(os.getenv("BOOKSCANNER_MAX_DIM", "3200"))
         if original_image.size[0] > max_dim or original_image.size[1] > max_dim:
@@ -339,6 +344,7 @@ If there's no book in the image, please type 'No book'."""
             self.logger.info("No boxes after filtering for %s", image_filename)
             return None
         cropped_books: list[str] = []
+        min_crop = int(os.getenv("BOOKSCANNER_MIN_CROP", "96"))
 
         # Loop over each detected mask/box
         if masks is None or masks.data is None or masks.data.numel() == 0:
@@ -350,6 +356,14 @@ If there's no book in the image, please type 'No book'."""
                     cropped_image = self._crop_box(enhanced_image, box)
                     cropped_image = self._rotate_if_spine(cropped_image, box)
 
+                if min(cropped_image.size) < min_crop:
+                    self.logger.info(
+                        "Skipping tiny crop %s size=%sx%s",
+                        i + 1,
+                        cropped_image.size[0],
+                        cropped_image.size[1],
+                    )
+                    continue
                 cropped_image_path = os.path.abspath(
                     f"{self.output_dir}/book_{i + 1}.png"
                 )
@@ -363,6 +377,14 @@ If there's no book in the image, please type 'No book'."""
                 cropped_image = self._mask_and_crop(enhanced_image, mask, box)
                 cropped_image = self._rotate_if_spine(cropped_image, box)
 
+                if min(cropped_image.size) < min_crop:
+                    self.logger.info(
+                        "Skipping tiny crop %s size=%sx%s",
+                        i + 1,
+                        cropped_image.size[0],
+                        cropped_image.size[1],
+                    )
+                    continue
                 cropped_image_path = os.path.abspath(
                     f"{self.output_dir}/book_{i + 1}.png"
                 )
@@ -374,6 +396,10 @@ If there's no book in the image, please type 'No book'."""
         )
         self.logger.info(f"Segmented image saved to {segmented_image_path}")
         segmented_image_encoded = image_to_base64(segmented_image_path)
+
+        if not cropped_books:
+            self.logger.info("All crops too small for %s", image_filename)
+            return None
 
         return segmented_image_encoded, cropped_books
 
@@ -676,6 +702,12 @@ If there's no book in the image, please type 'No book'."""
         resized = image.copy()
         resized.thumbnail((max_dim, max_dim))
         return resized
+
+    def _upscale_min_dim(self, image: Image.Image, min_dim: int) -> Image.Image:
+        width, height = image.size
+        scale = max(min_dim / float(width), min_dim / float(height))
+        new_size = (int(width * scale), int(height * scale))
+        return image.resize(new_size, Image.Resampling.LANCZOS)
 
 
     def _rotate_if_spine(

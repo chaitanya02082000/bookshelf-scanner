@@ -63,8 +63,9 @@
 
       @if (isProcessing()) {
         <div class="upload__status">
-          <h4>Processing...</h4>
-          <p>Uploading and scanning the shelf image.</p>
+          <div class="upload-loader-shell">
+            <div [class]="scanLoaderVariant()"></div>
+          </div>
         </div>
       }
 
@@ -78,14 +79,23 @@
   </section>
 
   @if (predictedImageSrc() && !scanPanelOpen()) {
-    <button
-      type="button"
-      class="scan-panel__trigger"
-      (click)="openScanPanel()"
-    >
-      <span class="scan-panel__trigger-cap"></span>
-      <span class="scan-panel__trigger-label">View scan</span>
-    </button>
+    <div class="scan-panel__dock">
+      <button
+        type="button"
+        class="scan-panel__trigger"
+        (click)="openScanPanel()"
+      >
+        <span class="scan-panel__trigger-cap"></span>
+        <span class="scan-panel__trigger-label">View scan</span>
+      </button>
+
+      @if (scanPanelError()) {
+        <div class="scan-panel__failure-popup">
+          <p class="scan-panel__failure-title">Scan failed</p>
+          <p class="scan-panel__failure-message">{{ scanPanelError() }}</p>
+        </div>
+      }
+    </div>
   }
 
   @if (scanPanelOpen()) {
@@ -117,9 +127,8 @@
             />
           } @else if (isProcessing()) {
             <div class="image-card__placeholder image-card__placeholder--loading">
-              <div class="image-card__loader">
-                <span>Developing segments</span>
-                <span class="image-card__loader-subtitle">Scanning spines under lamplight</span>
+              <div class="upload-loader-shell upload-loader-shell--panel">
+                <div [class]="scanLoaderVariant()"></div>
               </div>
             </div>
           } @else {

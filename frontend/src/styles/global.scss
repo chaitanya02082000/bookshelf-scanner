@@ -54,6 +54,16 @@ body {
   min-height: 100vh;
 }
 
+html,
+body {
+  overscroll-behavior: none;
+}
+
+app-root {
+  display: block;
+  min-height: 100vh;
+}
+
 h1,
 h2,
 h3 {

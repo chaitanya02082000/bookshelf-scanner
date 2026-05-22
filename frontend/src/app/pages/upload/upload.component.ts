@@ -16,6 +16,14 @@ import {AuthService} from "@auth0/auth0-angular";
 export class UploadComponent implements OnDestroy {
   protected readonly window = window;
   private readonly highConfidenceThreshold = 0.72;
+  private readonly loaderVariants = [
+    "upload-loader--10",
+    "upload-loader--11",
+    "upload-loader--12",
+    "upload-loader--14",
+    "upload-loader--18",
+    "upload-loader--19",
+  ] as const;
   private predictionSubscription: Subscription | null = null;
   public readonly uploadForm: FormGroup<UploadForm>;
   public readonly selectedFile = signal<File | null>(null);
@@ -27,6 +35,8 @@ export class UploadComponent implements OnDestroy {
   public readonly isProcessing = signal(false);
   public readonly reviewOpen = signal(false);
   public readonly scanPanelOpen = signal(false);
+  public readonly scanPanelError = signal("");
+  public readonly scanLoaderVariant = signal<string>(this.randomLoaderVariant());
   public readonly uploadedImageSrc = signal<string | null>(null);
   public readonly predictedImageSrc = signal<string | null>(null);
 
@@ -74,6 +84,8 @@ export class UploadComponent implements OnDestroy {
 
     this.reviewOpen.set(false);
     this.scanPanelOpen.set(false);
+    this.scanPanelError.set("");
+    this.scanLoaderVariant.set(this.randomLoaderVariant());
     this.predictedImageSrc.set(null);
     this.pendingMatches.set([]);
     this.pendingSearchCount.set(0);
@@ -87,6 +99,11 @@ export class UploadComponent implements OnDestroy {
             const imagePayload = this.normalizeImagePayload(result.data);
             if (imagePayload) {
               this.predictedImageSrc.set(imagePayload);
+              return;
+            }
+
+            if (this.isScanRejectionMessage(result.data)) {
+              this.scanPanelError.set(result.data.trim());
               return;
             }
 
@@ -397,6 +414,32 @@ export class UploadComponent implements OnDestroy {
 
     const mime = this.guessBase64MimeType(data);
     return `data:${mime};base64,${data}`;
+  }
+
+  private isScanRejectionMessage(data: string) {
+    const normalized = data
+      .trim()
+      .toLowerCase()
+      .replace(/^book\s+\d+:\s*/i, "")
+      .trim();
+
+    return [
+      "no book",
+      "no books",
+      "no book detected",
+      "no books detected",
+      "book not detected",
+      "books not detected",
+      "no book found",
+      "no books found",
+    ].some(
+      (message) => normalized === message || normalized.startsWith(`${message} `)
+    );
+  }
+
+  private randomLoaderVariant() {
+    const index = Math.floor(Math.random() * this.loaderVariants.length);
+    return this.loaderVariants[index];
   }
 
   private looksLikeBase64(data: string) {

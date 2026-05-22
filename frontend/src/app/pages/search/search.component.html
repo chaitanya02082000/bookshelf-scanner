@@ -1,36 +1,27 @@
 <section class="search">
   <div class="search__header">
-    <div>
-      <p class="search__eyebrow">Discover</p>
-      <h2>Search the catalog</h2>
-      <p class="search__subtitle">
-        Find any book and add it to your scanned library.
-      </p>
-    </div>
-    <form class="search__bar" (ngSubmit)="runSearch()">
-      <input
-        type="search"
-        placeholder="Search by title, author, or ISBN"
-        [ngModel]="query()"
-        (ngModelChange)="query.set($event)"
-        name="query"
-      />
-      <button type="submit">Search</button>
-    </form>
+    <button type="button" class="search__trigger" (click)="openSearch()">
+      <span class="search__trigger-icon">Search</span>
+      <span class="search__trigger-value">
+        @if (query()) {
+          {{ query() }}
+        } @else {
+          Search by title, author, or ISBN
+        }
+      </span>
+    </button>
   </div>
 
   <div class="search__results">
-    @if (catalog.isLoading()) {
-      <div class="search__status">Searching the catalog...</div>
-    }
-
-    @if (!catalog.isLoading() && results().length === 0) {
-      <div class="search__empty">
-        <p>Start a search to see results.</p>
+    @if (isSearching()) {
+      <div class="search__status">
+        <div class="search-loader-shell">
+          <div [class]="loaderVariant()"></div>
+        </div>
       </div>
     }
 
-    @if (results().length > 0) {
+    @if (!isSearching() && results().length > 0) {
       <p class="search__count">{{ total() }} matches</p>
       <div class="search__grid">
         @for (book of results(); track book.id) {
@@ -54,4 +45,30 @@
       </div>
     }
   </div>
+
+  @if (searchOpen()) {
+    <div class="search-overlay" role="dialog" aria-modal="true">
+      <button
+        type="button"
+        class="search-overlay__backdrop"
+        (click)="closeSearch()"
+        aria-label="Close search"
+      ></button>
+
+      <div class="search-overlay__panel">
+        <form class="search-overlay__form" (ngSubmit)="runSearch()">
+          <input
+            #searchInput
+            type="search"
+            placeholder="Search by title, author, or ISBN"
+            [ngModel]="query()"
+            (ngModelChange)="query.set($event)"
+            name="query"
+            autofocus
+          />
+          <button type="submit">Search</button>
+        </form>
+      </div>
+    </div>
+  }
 </section>

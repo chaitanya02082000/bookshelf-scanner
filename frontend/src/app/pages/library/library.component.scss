@@ -32,18 +32,20 @@
 
 .library__grid {
   display: grid;
-  gap: var(--bs-space-4);
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 180px));
+  justify-content: start;
 }
 
 .library-card {
+  width: 180px;
   background: var(--bs-surface);
   border: 1px solid var(--bs-border-strong);
   box-shadow: var(--bs-shadow-soft);
   display: grid;
   grid-template-rows: auto 1fr auto;
-  gap: var(--bs-space-3);
-  padding: var(--bs-space-3);
+  gap: 0.65rem;
+  padding: 0.75rem;
   position: relative;
   overflow: hidden;
 }
@@ -63,7 +65,7 @@
 
 .library-card__cover {
   width: 100%;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 2 / 3;
   background: var(--bs-surface-soft);
   border: 1px solid oklch(0.85 0.02 82 / 0.15);
   display: grid;
@@ -83,21 +85,32 @@
 }
 
 .library-card__body h3 {
-  margin: 0 0 0.35rem;
-  font-size: 1.05rem;
+  margin: 0 0 0.2rem;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .library-card__author {
   margin: 0;
   color: var(--bs-ink-soft);
-  font-size: 0.95rem;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .library-card__meta {
-  margin-top: var(--bs-space-1);
+  margin-top: 0.4rem;
   display: flex;
+  flex-wrap: wrap;
   gap: var(--bs-space-1);
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   color: var(--bs-ink-faded);
 }
 
@@ -114,9 +127,19 @@
   border: 1px solid oklch(0.55 0.12 32 / 0.4);
   background: transparent;
   color: oklch(0.75 0.08 32);
-  padding: 0.4rem 0.9rem;
+  padding: 0.35rem 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.06rem;
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  .library__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .library-card {
+    width: auto;
+  }
 }

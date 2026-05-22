@@ -43,7 +43,8 @@ The image may show a full front cover or a book spine.
 Return only `Title by Author`.
 If the author is not visible, return only the title.
 If some text is unclear, return the best effort using the most legible text.
-Only return `No book` if the image clearly does not contain a book cover or spine."""
+Do not explain your answer.
+Only return `No book` if the image clearly does not contain a book cover or book spine."""
         self.llm = None
         self.chat_handler = None
         self.llm_backend = "disabled"
@@ -278,7 +279,11 @@ Only return `No book` if the image clearly does not contain a book cover or spin
             scaled_image = scale_image(original_image, (max_dim, max_dim))
         else:
             scaled_image = original_image
-            if scaled_image.width > scaled_image.height:
+            if os.getenv("BOOKSCANNER_ROTATE_LANDSCAPE", "0").lower() in {
+                "1",
+                "true",
+                "yes",
+            } and scaled_image.width > scaled_image.height:
                 scaled_image = scaled_image.rotate(-90, expand=True)
 
         if self._should_use_full_image_cover_mode(scaled_image):
@@ -300,7 +305,18 @@ Only return `No book` if the image clearly does not contain a book cover or spin
             enhanced_image.size[0],
             enhanced_image.size[1],
         )
-        segmentation_mask_data = self._segment_books(enhanced_image, image_filename)
+        segmentation_mask_data = None
+        source = "yolo"
+
+        if self._should_prefer_detector(enhanced_image):
+            detector_result = self._detect_covers(enhanced_image, image_filename)
+            if detector_result is not None:
+                segmentation_mask_data = (None, detector_result)
+                source = "detector"
+                self.logger.info("Using detector-first boxes for %s", image_filename)
+
+        if segmentation_mask_data is None:
+            segmentation_mask_data = self._segment_books(enhanced_image, image_filename)
 
         if segmentation_mask_data is None:
             detector_result = self._detect_covers(enhanced_image, image_filename)
@@ -312,8 +328,6 @@ Only return `No book` if the image clearly does not contain a book cover or spin
                 return self._full_image_result(enhanced_image, image_filename)
             segmentation_mask_data = (None, detector_result)
             source = "detector"
-        else:
-            source = "yolo"
 
         if segmentation_mask_data is None:
             return None
@@ -511,9 +525,9 @@ Only return `No book` if the image clearly does not contain a book cover or spin
 
         text = os.getenv(
             "BOOKSCANNER_DETECTOR_PROMPT",
-            "book cover. front cover. book spine. paperback cover. hardcover book.",
+            "book spine. vertical book spine. book cover. front cover. paperback cover. hardcover book.",
         )
-        box_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_BOX", "0.2"))
+        box_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_BOX", "0.15"))
         text_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_TEXT", "0.2"))
         self.logger.info(
             "Detector prompt='%s' box_threshold=%s text_threshold=%s",
@@ -549,9 +563,9 @@ Only return `No book` if the image clearly does not contain a book cover or spin
         # Filter for likely front covers
         width, height = image.size
         img_area = float(width * height)
-        min_area = float(os.getenv("BOOKSCANNER_COVER_MIN_AREA", "0.01"))
-        min_aspect = float(os.getenv("BOOKSCANNER_COVER_MIN_ASPECT", "0.2"))
-        max_aspect = float(os.getenv("BOOKSCANNER_COVER_MAX_ASPECT", "8.0"))
+        min_area = float(os.getenv("BOOKSCANNER_COVER_MIN_AREA", "0.003"))
+        min_aspect = float(os.getenv("BOOKSCANNER_COVER_MIN_ASPECT", "0.15"))
+        max_aspect = float(os.getenv("BOOKSCANNER_COVER_MAX_ASPECT", "20.0"))
 
         box_w = (boxes[:, 2] - boxes[:, 0]).clamp(min=1)
         box_h = (boxes[:, 3] - boxes[:, 1]).clamp(min=1)
@@ -578,6 +592,10 @@ Only return `No book` if the image clearly does not contain a book cover or spin
         keep = nms(boxes, scores_t, iou)
         boxes = boxes[keep]
         scores_t = scores_t[keep]
+
+        sort_idx = torch.argsort(boxes[:, 0])
+        boxes = boxes[sort_idx]
+        scores_t = scores_t[sort_idx]
 
         # Single-cover mode: keep only the best box
         if os.getenv("BOOKSCANNER_SINGLE_COVER", "0").lower() in {"1", "true", "yes"}:
@@ -705,6 +723,23 @@ Only return `No book` if the image clearly does not contain a book cover or spin
         area = width * height
         return 0.9 <= aspect <= 2.4 and area >= 250_000
 
+    def _should_prefer_detector(self, image: Image.Image) -> bool:
+        if os.getenv("BOOKSCANNER_DETECTOR_FIRST", "1").lower() not in {
+            "1",
+            "true",
+            "yes",
+        }:
+            return False
+
+        width, height = image.size
+        if width <= 0 or height <= 0:
+            return False
+
+        if self._should_use_full_image_cover_mode(image):
+            return False
+
+        return width >= height or (height / float(width)) >= 2.0
+
     def _upscale_min_dim(self, image: Image.Image, min_dim: int) -> Image.Image:
         width, height = image.size
         scale = max(min_dim / float(width), min_dim / float(height))
@@ -742,6 +777,11 @@ Only return `No book` if the image clearly does not contain a book cover or spin
         self, image: Image.Image, box: tuple[float, float, float, float]
     ) -> Image.Image:
         x1, y1, x2, y2 = [int(v) for v in box]
+        pad = int(os.getenv("BOOKSCANNER_BOX_PAD", "12"))
+        x1 = max(0, x1 - pad)
+        y1 = max(0, y1 - pad)
+        x2 = min(image.size[0], x2 + pad)
+        y2 = min(image.size[1], y2 + pad)
         return image.crop((x1, y1, x2, y2))
 
     def _rotate_if_spine_xyxy(

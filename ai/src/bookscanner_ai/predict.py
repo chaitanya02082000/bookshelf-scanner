@@ -323,8 +323,11 @@ If there's no book in the image, please type 'No book'."""
         if segmentation_mask_data is None:
             detector_result = self._detect_covers(enhanced_image, image_filename)
             if detector_result is None:
-                self.logger.info("Detector returned no boxes for %s", image_filename)
-                return None
+                self.logger.info(
+                    "Detector returned no boxes for %s; using full-image fallback",
+                    image_filename,
+                )
+                return self._full_image_result(enhanced_image, image_filename)
             segmentation_mask_data = (None, detector_result)
             source = "detector"
 
@@ -342,7 +345,7 @@ If there's no book in the image, please type 'No book'."""
 
         if boxes is None or len(boxes) == 0:
             self.logger.info("No boxes after filtering for %s", image_filename)
-            return None
+            return self._full_image_result(enhanced_image, image_filename)
         cropped_books: list[str] = []
         min_crop = int(os.getenv("BOOKSCANNER_MIN_CROP", "96"))
 
@@ -398,10 +401,31 @@ If there's no book in the image, please type 'No book'."""
         segmented_image_encoded = image_to_base64(segmented_image_path)
 
         if not cropped_books:
-            self.logger.info("All crops too small for %s", image_filename)
-            return None
+            self.logger.info(
+                "All crops too small for %s; using full-image fallback", image_filename
+            )
+            return self._full_image_result(enhanced_image, image_filename)
 
         return segmented_image_encoded, cropped_books
+
+    def _full_image_result(
+        self, image: Image.Image, image_filename: str
+    ) -> tuple[str, list[str]]:
+        segmented_image_path = os.path.join(
+            self.output_dir, "segmentation", image_filename
+        )
+        image.save(segmented_image_path)
+
+        fallback_path = os.path.abspath(f"{self.output_dir}/book_1.png")
+        image.save(fallback_path)
+
+        self.logger.info(
+            "Using full-image fallback crop for %s size=%sx%s",
+            image_filename,
+            image.size[0],
+            image.size[1],
+        )
+        return image_to_base64(segmented_image_path), [fallback_path]
 
     def _segment_books(
         self, image: Image.Image, image_filename: str
@@ -525,9 +549,9 @@ If there's no book in the image, please type 'No book'."""
 
         text = os.getenv(
             "BOOKSCANNER_DETECTOR_PROMPT",
-            "book cover. front cover. paperback cover. hardcover book.",
+            "book cover. front cover. book spine. paperback cover. hardcover book.",
         )
-        box_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_BOX", "0.25"))
+        box_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_BOX", "0.2"))
         text_threshold = float(os.getenv("BOOKSCANNER_DETECTOR_TEXT", "0.2"))
         self.logger.info(
             "Detector prompt='%s' box_threshold=%s text_threshold=%s",
@@ -563,9 +587,9 @@ If there's no book in the image, please type 'No book'."""
         # Filter for likely front covers
         width, height = image.size
         img_area = float(width * height)
-        min_area = float(os.getenv("BOOKSCANNER_COVER_MIN_AREA", "0.02"))
-        min_aspect = float(os.getenv("BOOKSCANNER_COVER_MIN_ASPECT", "0.5"))
-        max_aspect = float(os.getenv("BOOKSCANNER_COVER_MAX_ASPECT", "1.7"))
+        min_area = float(os.getenv("BOOKSCANNER_COVER_MIN_AREA", "0.01"))
+        min_aspect = float(os.getenv("BOOKSCANNER_COVER_MIN_ASPECT", "0.2"))
+        max_aspect = float(os.getenv("BOOKSCANNER_COVER_MAX_ASPECT", "8.0"))
 
         box_w = (boxes[:, 2] - boxes[:, 0]).clamp(min=1)
         box_h = (boxes[:, 3] - boxes[:, 1]).clamp(min=1)
@@ -594,7 +618,7 @@ If there's no book in the image, please type 'No book'."""
         scores_t = scores_t[keep]
 
         # Single-cover mode: keep only the best box
-        if os.getenv("BOOKSCANNER_SINGLE_COVER", "1").lower() in {"1", "true", "yes"}:
+        if os.getenv("BOOKSCANNER_SINGLE_COVER", "0").lower() in {"1", "true", "yes"}:
             # Prefer largest area when many boxes remain
             areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
             best_idx = int(torch.argmax(areas).item())
@@ -783,9 +807,9 @@ If there's no book in the image, please type 'No book'."""
         min_area = float(os.getenv("BOOKSCANNER_MIN_BOX_AREA", "0.002"))
         keep = areas >= (min_area * img_area)
 
-        # Prefer cover-like boxes: not too thin or too tall
-        max_aspect = float(os.getenv("BOOKSCANNER_MAX_ASPECT", "3.5"))
-        min_aspect = float(os.getenv("BOOKSCANNER_MIN_ASPECT", "0.4"))
+        # Prefer book-like boxes, including tall spines.
+        max_aspect = float(os.getenv("BOOKSCANNER_MAX_ASPECT", "8.0"))
+        min_aspect = float(os.getenv("BOOKSCANNER_MIN_ASPECT", "0.2"))
         keep = keep & (aspect <= max_aspect) & (aspect >= min_aspect)
 
         if keep.sum() == 0:

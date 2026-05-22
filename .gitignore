@@ -2,7 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+frontend/andorid
+frontend/capacitor-oauth-demo
 # C extensions
 *.so
 

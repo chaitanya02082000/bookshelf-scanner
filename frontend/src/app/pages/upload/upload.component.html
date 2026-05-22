@@ -43,6 +43,14 @@
         </div>
       </label>
 
+      <button
+        class="upload__submit"
+        type="submit"
+        [disabled]="!selectedFile() || isProcessing()"
+      >
+        Upload image
+      </button>
+
       @if (pendingMatches().length) {
         <button
           class="upload__review-trigger"

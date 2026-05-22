@@ -38,9 +38,12 @@ class BookPredictor:
         os.makedirs(self.output_dir, exist_ok=True)
         os.makedirs(f"{self.output_dir}/segmentation", exist_ok=True)
 
-        self.prompt = """Recognize the title and author of this book in the format 'Title by Author'.
-If there is no author, just the title is fine.
-If there's no book in the image, please type 'No book'."""
+        self.prompt = """Read the visible book title and author from this image.
+The image may show a full front cover or a book spine.
+Return only `Title by Author`.
+If the author is not visible, return only the title.
+If some text is unclear, return the best effort using the most legible text.
+Only return `No book` if the image clearly does not contain a book cover or spine."""
         self.llm = None
         self.chat_handler = None
         self.llm_backend = "disabled"
@@ -279,6 +282,15 @@ If there's no book in the image, please type 'No book'."""
             scaled_image = scale_image(original_image, (max_dim, max_dim))
         else:
             scaled_image = original_image
+
+        if self._should_use_full_image_cover_mode(scaled_image):
+            self.logger.info(
+                "Using single-cover full-image mode for %s size=%sx%s",
+                os.path.basename(image_path),
+                scaled_image.size[0],
+                scaled_image.size[1],
+            )
+            return self._full_image_result(scaled_image, os.path.basename(image_path))
 
         enhanced_image = self._enhance_image(scaled_image)
         enhanced_image = self._reduce_noise(enhanced_image)
@@ -726,6 +738,22 @@ If there's no book in the image, please type 'No book'."""
         resized = image.copy()
         resized.thumbnail((max_dim, max_dim))
         return resized
+
+    def _should_use_full_image_cover_mode(self, image: Image.Image) -> bool:
+        if os.getenv("BOOKSCANNER_AUTO_FULL_IMAGE", "1").lower() not in {
+            "1",
+            "true",
+            "yes",
+        }:
+            return False
+
+        width, height = image.size
+        if width <= 0 or height <= 0:
+            return False
+
+        aspect = height / float(width)
+        area = width * height
+        return 0.9 <= aspect <= 2.4 and area >= 250_000
 
     def _upscale_min_dim(self, image: Image.Image, min_dim: int) -> Image.Image:
         width, height = image.size

@@ -77,6 +77,17 @@
 
   </section>
 
+  @if (predictedImageSrc() && !scanPanelOpen()) {
+    <button
+      type="button"
+      class="scan-panel__trigger"
+      (click)="openScanPanel()"
+    >
+      <span class="scan-panel__trigger-cap"></span>
+      <span class="scan-panel__trigger-label">View scan</span>
+    </button>
+  }
+
   @if (scanPanelOpen()) {
     <div class="scan-panel" role="dialog" aria-modal="true">
       <div class="scan-panel__overlay" (click)="closeScanPanel()"></div>

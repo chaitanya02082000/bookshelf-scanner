@@ -155,19 +155,15 @@ Only return `No book` if the image clearly does not contain a book cover or spin
         if self.yolo_initialized:
             return
 
-        # Use a segmentation-capable checkpoint.
-        # Default to a larger model for better cover detection.
-        weights = os.getenv("YOLO_SEG_WEIGHTS", "yolov8x-seg.pt")
+        weights = os.getenv("YOLO_SEG_WEIGHTS", "yolo11x-seg.pt")
         if weights and os.path.isabs(weights) and not os.path.exists(weights):
             raise FileNotFoundError(
                 f"YOLO weights not found at '{weights}'. Set YOLO_SEG_WEIGHTS to a valid path."
             )
-        if weights == "yolo26n-seg.pt" and not os.path.exists(weights):
-            weights = "yolov8x-seg.pt"
         self.logger.info("Initializing YOLO segmentation weights=%s", weights)
-        self.yolo_model = YOLO(weights)
+        self.yolo_model = YOLO(weights, task="segment")
 
-        fallback_weights = os.getenv("YOLO_DET_WEIGHTS", "yolov8x.pt")
+        fallback_weights = os.getenv("YOLO_DET_WEIGHTS", "")
         if (
             fallback_weights
             and os.path.isabs(fallback_weights)
@@ -277,11 +273,13 @@ Only return `No book` if the image clearly does not contain a book cover or spin
             original_image = self._upscale_min_dim(original_image, min_dim)
 
         # Scale image if too large
-        max_dim = int(os.getenv("BOOKSCANNER_MAX_DIM", "3200"))
+        max_dim = int(os.getenv("BOOKSCANNER_MAX_DIM", "2560"))
         if original_image.size[0] > max_dim or original_image.size[1] > max_dim:
             scaled_image = scale_image(original_image, (max_dim, max_dim))
         else:
             scaled_image = original_image
+            if scaled_image.width > scaled_image.height:
+                scaled_image = scaled_image.rotate(-90, expand=True)
 
         if self._should_use_full_image_cover_mode(scaled_image):
             self.logger.info(
@@ -302,35 +300,7 @@ Only return `No book` if the image clearly does not contain a book cover or spin
             enhanced_image.size[0],
             enhanced_image.size[1],
         )
-        cover_only = os.getenv("BOOKSCANNER_COVER_ONLY", "0").lower() in {
-            "1",
-            "true",
-            "yes",
-        }
-        segmentation_mask_data = None
-        source = "yolo"
-
-        if cover_only:
-            detector_result = self._detect_covers(enhanced_image, image_filename)
-            if detector_result is not None:
-                segmentation_mask_data = (None, detector_result)
-                source = "detector"
-                self.logger.info("Using detector-only boxes for %s", image_filename)
-
-        if segmentation_mask_data is None:
-            segmentation_mask_data = self._segment_books(enhanced_image, image_filename)
-
-        if segmentation_mask_data is None:
-            segmentation_mask_data = self._segment_books(scaled_image, image_filename)
-            if segmentation_mask_data is not None:
-                enhanced_image = scaled_image
-
-        if segmentation_mask_data is None:
-            rotated = enhanced_image.rotate(90, expand=True)
-            rotated_name = f"rot_{image_filename}"
-            segmentation_mask_data = self._segment_books(rotated, rotated_name)
-            if segmentation_mask_data is not None:
-                enhanced_image = rotated
+        segmentation_mask_data = self._segment_books(enhanced_image, image_filename)
 
         if segmentation_mask_data is None:
             detector_result = self._detect_covers(enhanced_image, image_filename)
@@ -342,6 +312,8 @@ Only return `No book` if the image clearly does not contain a book cover or spin
                 return self._full_image_result(enhanced_image, image_filename)
             segmentation_mask_data = (None, detector_result)
             source = "detector"
+        else:
+            source = "yolo"
 
         if segmentation_mask_data is None:
             return None
@@ -352,10 +324,7 @@ Only return `No book` if the image clearly does not contain a book cover or spin
             detector_data = boxes
             boxes = self._boxes_from_detector(detector_data)
             self.logger.info("Skipping box filtering for detector results")
-        else:
-            boxes = self._select_boxes(boxes, enhanced_image.size)
-
-        if boxes is None or len(boxes) == 0:
+        elif boxes is None or len(boxes) == 0:
             self.logger.info("No boxes after filtering for %s", image_filename)
             return self._full_image_result(enhanced_image, image_filename)
         cropped_books: list[str] = []
@@ -456,9 +425,9 @@ Only return `No book` if the image clearly does not contain a book cover or spin
         if classes_env:
             classes = [int(value) for value in classes_env.split(",")]
 
-        conf = float(os.getenv("BOOKSCANNER_YOLO_CONF", "0.15"))
-        imgsz = int(os.getenv("BOOKSCANNER_YOLO_IMGSZ", "2560"))
-        iou = float(os.getenv("BOOKSCANNER_YOLO_IOU", "0.5"))
+        conf = float(os.getenv("BOOKSCANNER_YOLO_CONF", "0.25"))
+        imgsz = int(os.getenv("BOOKSCANNER_YOLO_IMGSZ", str(image.size[0])))
+        iou = float(os.getenv("BOOKSCANNER_YOLO_IOU", "0.45"))
         agnostic_nms = os.getenv("BOOKSCANNER_YOLO_AGNOSTIC", "1").lower() in {
             "1",
             "true",
@@ -477,7 +446,7 @@ Only return `No book` if the image clearly does not contain a book cover or spin
         results = self.yolo_model.predict(
             image,
             imgsz=imgsz,
-            half=False,  # safer across CPU/GPU
+            half=torch.cuda.is_available(),
             classes=classes,
             retina_masks=True,
             conf=conf,
@@ -501,25 +470,6 @@ Only return `No book` if the image clearly does not contain a book cover or spin
                 mask_count,
                 box_count,
             )
-
-        if masks is None or boxes is None or len(boxes) == 0:
-            if classes is not None:
-                self.logger.info("YOLO found no boxes; retrying without class filter")
-                results = self.yolo_model.predict(
-                    image,
-                    imgsz=imgsz,
-                    half=False,
-                    classes=None,
-                    retina_masks=True,
-                    conf=conf,
-                    iou=iou,
-                    agnostic_nms=agnostic_nms,
-                    verbose=False,
-                )
-                r = results[0]
-                masks = r.masks
-                boxes = r.boxes
-                r.save(filename=f"{self.output_dir}/segmentation/{image_filename}")
 
         if masks is None or boxes is None or len(boxes) == 0:
             if self.yolo_fallback_model is None:

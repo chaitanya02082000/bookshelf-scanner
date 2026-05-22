@@ -6,7 +6,7 @@ frontend/andorid
 frontend/capacitor-oauth-demo
 # C extensions
 *.so
-
+bookshelf-scanner/
 # Distribution / packaging
 .Python
 build/

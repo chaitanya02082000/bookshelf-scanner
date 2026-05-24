@@ -1,3 +1,7 @@
+from src.config import load_environment
+
+load_environment()
+
 from .libgen_service import LibgenService
 from .auth_service import AuthenticatedUser, get_current_user
 from .library_service import library_service

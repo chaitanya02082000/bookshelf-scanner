@@ -84,7 +84,11 @@ export class BookCatalogService {
       const url = new URL(`${this.apiUrl}/catalog/libgen/search`);
       url.searchParams.set("q", query);
       url.searchParams.set("limit", String(limit));
-      const response = await fetch(url.toString());
+      const response = await fetch(url.toString(), {
+        headers: {
+          "ngrok-skip-browser-warning": "1",
+        },
+      });
       const result = (await response.json()) as {
         success: boolean;
         data?: LibgenBook[];
@@ -105,6 +109,7 @@ export class BookCatalogService {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "1",
       },
       body: JSON.stringify({
         query,

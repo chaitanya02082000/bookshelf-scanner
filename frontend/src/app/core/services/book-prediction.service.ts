@@ -26,6 +26,9 @@ export class BookPredictionService implements OnDestroy {
         try {
           const response = await fetch(`${this.apiUrl}/predict`, {
             method: "POST",
+            headers: {
+              "ngrok-skip-browser-warning": "1",
+            },
             body: formData,
             signal: this.abortController!.signal,
           });

@@ -82,6 +82,7 @@ export class LibraryService {
       headers: {
         ...(init?.headers ?? {}),
         Authorization: `Bearer ${token}`,
+        "ngrok-skip-browser-warning": "1",
       },
     });
 

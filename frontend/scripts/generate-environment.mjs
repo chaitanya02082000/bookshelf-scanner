@@ -7,8 +7,21 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
 const environmentsDir = path.join(projectRoot, "src", "environments");
 
-const devApiUrl = process.env.FRONTEND_API_URL_DEV ?? process.env.FRONTEND_API_URL ?? "http://localhost:8000/api";
-const prodApiUrl = process.env.FRONTEND_API_URL_PROD ?? process.env.FRONTEND_API_URL ?? "http://localhost:8000/api";
+const normalizeApiUrl = (value) => {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
+};
+
+const devApiUrl = normalizeApiUrl(
+  process.env.FRONTEND_API_URL_DEV ??
+    process.env.FRONTEND_API_URL ??
+    "http://localhost:8000/api"
+);
+const prodApiUrl = normalizeApiUrl(
+  process.env.FRONTEND_API_URL_PROD ??
+    process.env.FRONTEND_API_URL ??
+    "http://localhost:8000/api"
+);
 
 const renderEnvironment = (production, apiUrl) => `export const environment = {
   production: ${production},

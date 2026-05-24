@@ -3,7 +3,7 @@ import {CommonModule} from "@angular/common";
 import {FormControl, FormGroup, ReactiveFormsModule} from "@angular/forms";
 import {Subscription} from "rxjs";
 import {BookCatalogService, BookPredictionService, LibraryService} from "@/core/services";
-import {Book} from "@/core/models";
+import {Book, LibgenBook} from "@/core/models";
 import {AuthService} from "@auth0/auth0-angular";
 
 @Component({
@@ -39,6 +39,12 @@ export class UploadComponent implements OnDestroy {
   public readonly scanLoaderVariant = signal<string>(this.randomLoaderVariant());
   public readonly uploadedImageSrc = signal<string | null>(null);
   public readonly predictedImageSrc = signal<string | null>(null);
+  public readonly libgenOpen = signal(false);
+  public readonly libgenLoading = signal(false);
+  public readonly libgenResolvingId = signal<string | null>(null);
+  public readonly libgenQuery = signal("");
+  public readonly libgenResults = signal<LibgenBook[]>([]);
+  public readonly libgenError = signal("");
 
   constructor(
     private bookPredictionService: BookPredictionService,
@@ -386,6 +392,56 @@ export class UploadComponent implements OnDestroy {
 
   closeScanPanel() {
     this.scanPanelOpen.set(false);
+  }
+
+  async openLibgenSearch(line: string) {
+    const parsed = this.parseScanLine(line);
+    const query = parsed.author ? `${parsed.title} ${parsed.author}` : parsed.title;
+    if (!query.trim()) {
+      return;
+    }
+
+    this.libgenOpen.set(true);
+    this.libgenLoading.set(true);
+    this.libgenError.set("");
+    this.libgenResults.set([]);
+    this.libgenQuery.set(query);
+
+    try {
+      const result = await this.catalog.searchLibgen(query, 8);
+      this.libgenResults.set(result.items);
+      if (!result.items.length) {
+        this.libgenError.set("No downloadable editions found.");
+      }
+    } catch (error) {
+      this.libgenError.set(`Failed to search Libgen: ${error}`);
+    } finally {
+      this.libgenLoading.set(false);
+    }
+  }
+
+  closeLibgen() {
+    this.libgenOpen.set(false);
+    this.libgenLoading.set(false);
+    this.libgenResolvingId.set(null);
+    this.libgenError.set("");
+  }
+
+  async openLibgenDownload(book: LibgenBook) {
+    this.libgenResolvingId.set(book.id);
+    this.libgenError.set("");
+    try {
+      const url = await this.catalog.resolveLibgenDownloadLink(this.libgenQuery(), book);
+      if (!url) {
+        this.libgenError.set("Download link could not be resolved.");
+        return;
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      this.libgenError.set(`Failed to resolve download link: ${error}`);
+    } finally {
+      this.libgenResolvingId.set(null);
+    }
   }
 
   private pushNotification(message: string) {

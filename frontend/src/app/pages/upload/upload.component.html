@@ -137,17 +137,26 @@
 
           <div class="scan-panel__titles">
             <p class="scan-panel__titles-label">Detected titles</p>
-            @if (results().length === 0) {
-              <p class="scan-panel__empty">No titles yet.</p>
-            } @else {
-              <ul class="scan-panel__list">
-                @for (result of results(); track result) {
-                  <li class="scan-panel__list-item">{{ result }}</li>
-                }
-              </ul>
-            }
+              @if (results().length === 0) {
+                <p class="scan-panel__empty">No titles yet.</p>
+              } @else {
+                <ul class="scan-panel__list">
+                  @for (result of results(); track result) {
+                  <li class="scan-panel__list-item">
+                    <span>{{ result }}</span>
+                    <button
+                      type="button"
+                      class="scan-panel__download-trigger"
+                      (click)="openLibgenSearch(result)"
+                    >
+                      Find download
+                    </button>
+                  </li>
+                  }
+                </ul>
+              }
+            </div>
           </div>
-        </div>
       </div>
     </div>
   }
@@ -224,6 +233,84 @@
                       (click)="removePending(match.id)"
                     >
                       Dismiss
+                    </button>
+                  </div>
+                </li>
+              }
+            </ul>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (libgenOpen()) {
+    <div class="review-modal" role="dialog" aria-modal="true">
+      <div class="review-modal__overlay" (click)="closeLibgen()"></div>
+      <div class="review-modal__panel review-modal__panel--wide">
+        <header class="review-modal__header">
+          <div>
+            <p class="review-modal__eyebrow">Digital editions</p>
+            <h3>Libgen results</h3>
+            <p>Results for {{ libgenQuery() }}</p>
+          </div>
+          <button
+            type="button"
+            class="review-modal__close"
+            (click)="closeLibgen()"
+          >
+            Close
+          </button>
+        </header>
+
+        <div class="review-modal__body">
+          @if (libgenLoading()) {
+            <div class="review-skeleton">
+              <div class="skeleton-line skeleton-line--wide"></div>
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line skeleton-line--short"></div>
+            </div>
+          } @else if (libgenError()) {
+            <div class="upload__error">{{ libgenError() }}</div>
+          } @else if (libgenResults().length === 0) {
+            <div class="upload__empty">
+              <p>No downloadable editions found.</p>
+            </div>
+          } @else {
+            <ul class="libgen-list">
+              @for (book of libgenResults(); track book.md5 || book.id) {
+                <li class="libgen-card">
+                  <div class="libgen-card__info">
+                    <p class="libgen-card__title">{{ book.title }}</p>
+                    <p class="libgen-card__author">{{ book.author || "Unknown author" }}</p>
+                    <p class="libgen-card__meta">
+                      {{ book.extension || "unknown" | uppercase }}
+                      @if (book.size) {
+                        · {{ book.size }}
+                      }
+                      @if (book.year) {
+                        · {{ book.year }}
+                      }
+                      @if (book.language) {
+                        · {{ book.language }}
+                      }
+                    </p>
+                    @if (book.publisher) {
+                      <p class="libgen-card__publisher">{{ book.publisher }}</p>
+                    }
+                  </div>
+                  <div class="libgen-card__actions">
+                    <button
+                      type="button"
+                      class="review-card__primary"
+                      (click)="openLibgenDownload(book)"
+                      [disabled]="libgenResolvingId() === book.id"
+                    >
+                      @if (libgenResolvingId() === book.id) {
+                        Resolving...
+                      } @else {
+                        Open download
+                      }
                     </button>
                   </div>
                 </li>

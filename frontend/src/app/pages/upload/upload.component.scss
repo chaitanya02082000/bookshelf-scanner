@@ -322,6 +322,76 @@
   background: oklch(0.12 0.02 70 / 0.7);
 }
 
+.review-modal__panel--wide {
+  width: min(960px, calc(100vw - 2rem));
+}
+
+.scan-panel__list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bs-space-2);
+}
+
+.scan-panel__download-trigger {
+  border: 1px solid var(--bs-border-strong);
+  background: transparent;
+  color: var(--bs-ink);
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.05rem;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.libgen-list {
+  display: grid;
+  gap: var(--bs-space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.libgen-card {
+  display: grid;
+  gap: var(--bs-space-3);
+  padding: var(--bs-space-3);
+  border: 1px solid var(--bs-border-strong);
+  background: var(--bs-surface-soft);
+}
+
+.libgen-card__info {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.libgen-card__title,
+.libgen-card__author,
+.libgen-card__meta,
+.libgen-card__publisher {
+  margin: 0;
+}
+
+.libgen-card__title {
+  font-weight: 700;
+}
+
+.libgen-card__author,
+.libgen-card__publisher {
+  color: var(--bs-ink-soft);
+}
+
+.libgen-card__meta {
+  color: var(--bs-ink-faded);
+  font-size: 0.9rem;
+}
+
+.libgen-card__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .review-modal__panel {
   position: relative;
   width: min(720px, calc(100% - 2rem));

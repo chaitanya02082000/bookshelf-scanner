@@ -1,5 +1,6 @@
 import {Injectable, signal} from "@angular/core";
-import {Book, BookSearchResult} from "@/core/models";
+import {Book, BookSearchResult, LibgenBook, LibgenSearchResult} from "@/core/models";
+import {environment} from "@/../environments/environment";
 
 interface OpenLibrarySearchDoc {
   key: string;
@@ -28,6 +29,7 @@ interface OpenLibraryWorkResponse {
 })
 export class BookCatalogService {
   readonly isLoading = signal(false);
+  private readonly apiUrl = environment.apiUrl;
 
   async search(query: string, limit = 12): Promise<BookSearchResult> {
     if (!query.trim()) {
@@ -70,6 +72,54 @@ export class BookCatalogService {
         ? `https://covers.openlibrary.org/b/id/${data.covers[0]}-L.jpg`
         : null,
     };
+  }
+
+  async searchLibgen(query: string, limit = 8): Promise<LibgenSearchResult> {
+    if (!query.trim()) {
+      return {query, total: 0, items: []};
+    }
+
+    this.isLoading.set(true);
+    try {
+      const url = new URL(`${this.apiUrl}/catalog/libgen/search`);
+      url.searchParams.set("q", query);
+      url.searchParams.set("limit", String(limit));
+      const response = await fetch(url.toString());
+      const result = (await response.json()) as {
+        success: boolean;
+        data?: LibgenBook[];
+      };
+      const items = result.data ?? [];
+      return {
+        query,
+        total: items.length,
+        items,
+      };
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  async resolveLibgenDownloadLink(query: string, book: LibgenBook): Promise<string | null> {
+    const response = await fetch(`${this.apiUrl}/catalog/libgen/resolve`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query,
+        md5: book.md5,
+        title: book.title,
+        author: book.author ?? null,
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const result = (await response.json()) as {success: boolean; data?: string};
+    return result.data ?? null;
   }
 
   private mapDocToBook(doc: OpenLibrarySearchDoc): Book {

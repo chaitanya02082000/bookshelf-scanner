@@ -366,6 +366,14 @@
   gap: 0.25rem;
 }
 
+.price-card__source {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08rem;
+  font-size: 0.7rem;
+  color: var(--bs-ink-faded);
+}
+
 .libgen-card__title,
 .libgen-card__author,
 .libgen-card__meta,
@@ -421,6 +429,11 @@
 .review-modal__header p {
   margin: 0;
   color: var(--bs-ink-faded);
+}
+
+.review-modal__provider-note {
+  white-space: pre-line;
+  font-size: 0.82rem;
 }
 
 .review-modal__eyebrow {

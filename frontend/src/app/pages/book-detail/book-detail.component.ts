@@ -1,7 +1,7 @@
 import {ChangeDetectionStrategy, Component, signal} from "@angular/core";
 import {CommonModule} from "@angular/common";
 import {ActivatedRoute} from "@angular/router";
-import {Book} from "@/core/models";
+import {Book, ExternalEbookResult} from "@/core/models";
 import {BookCatalogService, LibraryService} from "@/core/services";
 import {formatBookSummaryHtml} from "@/core/utils/book-summary";
 
@@ -16,6 +16,11 @@ import {formatBookSummaryHtml} from "@/core/utils/book-summary";
 export class BookDetailComponent {
   protected readonly book = signal<Book | null>(null);
   protected readonly isLoading = signal(true);
+  protected readonly ebookResults = signal<ExternalEbookResult[]>([]);
+  protected readonly isLoadingEbooks = signal(false);
+  protected readonly hasRequestedEbooks = signal(false);
+  protected readonly ebookResolvingId = signal<string | null>(null);
+  protected readonly ebookError = signal("");
 
   constructor(
     private readonly route: ActivatedRoute,
@@ -34,6 +39,49 @@ export class BookDetailComponent {
 
   protected formatSummary(summary?: string | null): string {
     return formatBookSummaryHtml(summary);
+  }
+
+  async loadEbookOptions() {
+    const book = this.book();
+    if (!book || this.isLoadingEbooks()) {
+      return;
+    }
+
+    this.hasRequestedEbooks.set(true);
+    this.ebookResults.set([]);
+    this.ebookError.set("");
+    this.isLoadingEbooks.set(true);
+
+    try {
+      const author = book.authors[0]?.trim();
+      const query = author ? `${book.title} ${author}` : book.title;
+      const result = await this.catalog.searchExternalEbooks(query, 8);
+      this.ebookResults.set(result.items);
+      if (!result.items.length) {
+        this.ebookError.set("No digital editions found.");
+      }
+    } catch (error) {
+      this.ebookError.set(`Failed to search external provider: ${error}`);
+    } finally {
+      this.isLoadingEbooks.set(false);
+    }
+  }
+
+  async openEbookLink(book: ExternalEbookResult) {
+    this.ebookResolvingId.set(book.id);
+    this.ebookError.set("");
+    try {
+      const url = await this.catalog.resolveExternalEbookDownload(book);
+      if (!url) {
+        this.ebookError.set("Open link could not be resolved.");
+        return;
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      this.ebookError.set(`Failed to resolve external link: ${error}`);
+    } finally {
+      this.ebookResolvingId.set(null);
+    }
   }
 
   private async load() {

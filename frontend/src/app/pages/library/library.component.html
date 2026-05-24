@@ -85,6 +85,67 @@
             }
 
             <div class="book-modal__section">
+              @if (!hasRequestedEbooks()) {
+                <div class="book-modal__actions">
+                  <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadEbookOptions()">
+                    Find ebook
+                  </button>
+                </div>
+              } @else if (isLoadingEbooks()) {
+                <div class="book-modal__loading">Loading digital editions...</div>
+              } @else if (ebookError()) {
+                <div class="book-modal__empty">{{ ebookError() }}</div>
+                <div class="book-modal__actions">
+                  <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadEbookOptions()">
+                    Try again
+                  </button>
+                </div>
+              } @else {
+                <div class="book-modal__actions">
+                  <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadEbookOptions()">
+                    Refresh ebooks
+                  </button>
+                </div>
+                <div class="book-modal__prices">
+                  @for (ebook of ebookResults(); track ebook.id) {
+                    <div class="price-card">
+                      <div>
+                        <p class="price-card__source">
+                          {{ ebook.source || 'External source' }}
+                          @if (ebook.score !== null && ebook.score !== undefined) {
+                            · Score {{ ebook.score }}
+                          }
+                        </p>
+                        <p class="price-card__title">{{ ebook.title }}</p>
+                        <p class="price-card__note">
+                          {{ ebook.author || 'Unknown author' }}
+                          @if (ebook.extension) {
+                            · {{ ebook.extension | uppercase }}
+                          }
+                          @if (ebook.year) {
+                            · {{ ebook.year }}
+                          }
+                        </p>
+                      </div>
+                      <button
+                        class="book-modal__action"
+                        type="button"
+                        (click)="openEbookLink(ebook)"
+                        [disabled]="ebookResolvingId() === ebook.id"
+                      >
+                        @if (ebookResolvingId() === ebook.id) {
+                          Opening...
+                        } @else {
+                          Open link
+                        }
+                      </button>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            <div class="book-modal__section">
               @if (!hasRequestedPrices()) {
                 <div class="book-modal__actions">
                   <button class="book-modal__action" type="button" (click)="loadPriceOffers()">

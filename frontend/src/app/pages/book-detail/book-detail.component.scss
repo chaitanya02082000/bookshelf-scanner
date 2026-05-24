@@ -114,3 +114,62 @@
   color: var(--bs-ink);
   cursor: pointer;
 }
+
+.detail__cta--secondary {
+  border: 1px solid var(--bs-border-strong);
+  background: transparent;
+}
+
+.detail__cta:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.detail__ebooks,
+.detail__ebook-info {
+  display: grid;
+  gap: var(--bs-space-3);
+}
+
+.detail__ebook-actions {
+  display: flex;
+}
+
+.detail__ebook-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--bs-space-3);
+}
+
+.detail__ebook-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--bs-space-3);
+  padding: var(--bs-space-3);
+  border: 1px solid var(--bs-border-strong);
+  background: var(--bs-surface-soft);
+}
+
+.detail__ebook-source,
+.detail__ebook-title,
+.detail__ebook-meta {
+  margin: 0;
+}
+
+.detail__ebook-source {
+  text-transform: uppercase;
+  letter-spacing: 0.08rem;
+  font-size: 0.7rem;
+  color: var(--bs-ink-faded);
+}
+
+.detail__ebook-title {
+  font-weight: 700;
+}
+
+.detail__ebook-meta {
+  color: var(--bs-ink-soft);
+}

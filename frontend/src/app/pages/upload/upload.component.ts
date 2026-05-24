@@ -3,7 +3,7 @@ import {CommonModule} from "@angular/common";
 import {FormControl, FormGroup, ReactiveFormsModule} from "@angular/forms";
 import {Subscription} from "rxjs";
 import {BookCatalogService, BookPredictionService, LibraryService} from "@/core/services";
-import {Book, LibgenBook} from "@/core/models";
+import {Book, ExternalEbookResult} from "@/core/models";
 import {AuthService} from "@auth0/auth0-angular";
 
 @Component({
@@ -39,12 +39,12 @@ export class UploadComponent implements OnDestroy {
   public readonly scanLoaderVariant = signal<string>(this.randomLoaderVariant());
   public readonly uploadedImageSrc = signal<string | null>(null);
   public readonly predictedImageSrc = signal<string | null>(null);
-  public readonly libgenOpen = signal(false);
-  public readonly libgenLoading = signal(false);
-  public readonly libgenResolvingId = signal<string | null>(null);
-  public readonly libgenQuery = signal("");
-  public readonly libgenResults = signal<LibgenBook[]>([]);
-  public readonly libgenError = signal("");
+  public readonly ebookProviderOpen = signal(false);
+  public readonly ebookProviderLoading = signal(false);
+  public readonly ebookProviderResolvingId = signal<string | null>(null);
+  public readonly ebookProviderQuery = signal("");
+  public readonly ebookProviderResults = signal<ExternalEbookResult[]>([]);
+  public readonly ebookProviderError = signal("");
 
   constructor(
     private bookPredictionService: BookPredictionService,
@@ -406,53 +406,60 @@ export class UploadComponent implements OnDestroy {
     this.scanPanelOpen.set(false);
   }
 
-  async openLibgenSearch(line: string) {
+  async openExternalEbookSearch(line: string) {
     const parsed = this.parseScanLine(line);
     const query = parsed.author ? `${parsed.title} ${parsed.author}` : parsed.title;
     if (!query.trim()) {
       return;
     }
 
-    this.libgenOpen.set(true);
-    this.libgenLoading.set(true);
-    this.libgenError.set("");
-    this.libgenResults.set([]);
-    this.libgenQuery.set(query);
+    this.ebookProviderOpen.set(true);
+    this.ebookProviderLoading.set(true);
+    this.ebookProviderError.set("");
+    this.ebookProviderResults.set([]);
+    this.ebookProviderQuery.set(query);
 
     try {
-      const result = await this.catalog.searchLibgen(query, 8);
-      this.libgenResults.set(result.items);
+      const result = await this.catalog.searchExternalEbooks(query, 8);
+      this.ebookProviderResults.set(result.items);
       if (!result.items.length) {
-        this.libgenError.set("No downloadable editions found.");
+        this.ebookProviderError.set("No digital editions found.");
       }
     } catch (error) {
-      this.libgenError.set(`Failed to search Libgen: ${error}`);
+      this.ebookProviderError.set(`Failed to search external provider: ${error}`);
     } finally {
-      this.libgenLoading.set(false);
+      this.ebookProviderLoading.set(false);
     }
   }
 
-  closeLibgen() {
-    this.libgenOpen.set(false);
-    this.libgenLoading.set(false);
-    this.libgenResolvingId.set(null);
-    this.libgenError.set("");
+  openExternalEbookSearchForMatch(match: PendingMatch) {
+    const query = match.parsedAuthor
+      ? `${match.parsedTitle} ${match.parsedAuthor}`
+      : match.parsedTitle;
+    return this.openExternalEbookSearch(query);
   }
 
-  async openLibgenDownload(book: LibgenBook) {
-    this.libgenResolvingId.set(book.id);
-    this.libgenError.set("");
+  closeExternalEbookSearch() {
+    this.ebookProviderOpen.set(false);
+    this.ebookProviderLoading.set(false);
+    this.ebookProviderResolvingId.set(null);
+    this.ebookProviderError.set("");
+  }
+
+  async openExternalEbookDownload(book: ExternalEbookResult) {
+    this.ebookProviderResolvingId.set(book.id);
+    this.ebookProviderError.set("");
     try {
-      const url = await this.catalog.resolveLibgenDownloadLink(this.libgenQuery(), book);
+      const url = await this.catalog.resolveExternalEbookDownload(book);
       if (!url) {
-        this.libgenError.set("Download link could not be resolved.");
+        this.ebookProviderError.set("Open link could not be resolved.");
         return;
       }
       window.open(url, "_blank", "noopener,noreferrer");
     } catch (error) {
-      this.libgenError.set(`Failed to resolve download link: ${error}`);
+      this.ebookProviderError.set(`Failed to resolve external link: ${error}`);
     } finally {
-      this.libgenResolvingId.set(null);
+      this.ebookProviderResolvingId.set(null);
     }
   }
 

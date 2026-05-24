@@ -147,9 +147,9 @@
                     <button
                       type="button"
                       class="scan-panel__download-trigger"
-                      (click)="openLibgenSearch(result)"
+                      (click)="openExternalEbookSearch(result)"
                     >
-                      Find download
+                      Find ebook
                     </button>
                   </li>
                   }
@@ -218,6 +218,13 @@
                     </div>
                   }
                   <div class="review-card__actions">
+                    <button
+                      class="review-card__secondary"
+                      type="button"
+                      (click)="openExternalEbookSearchForMatch(match)"
+                    >
+                      Find ebook
+                    </button>
                     @if (match.candidate) {
                       <button
                         class="review-card__primary"
@@ -244,43 +251,53 @@
     </div>
   }
 
-  @if (libgenOpen()) {
+  @if (ebookProviderOpen()) {
     <div class="review-modal" role="dialog" aria-modal="true">
-      <div class="review-modal__overlay" (click)="closeLibgen()"></div>
+      <div class="review-modal__overlay" (click)="closeExternalEbookSearch()"></div>
       <div class="review-modal__panel review-modal__panel--wide">
         <header class="review-modal__header">
           <div>
             <p class="review-modal__eyebrow">Digital editions</p>
-            <h3>Libgen results</h3>
-            <p>Results for {{ libgenQuery() }}</p>
+            <h3>External ebook results</h3>
+            <p>Results for {{ ebookProviderQuery() }}</p>
+            <p class="review-modal__provider-note">
+              // #EDIT This modal expects your provider response to include title, author, format,
+              // source, coverUrl, and downloadUrl/directUrl fields.
+            </p>
           </div>
           <button
             type="button"
             class="review-modal__close"
-            (click)="closeLibgen()"
+            (click)="closeExternalEbookSearch()"
           >
             Close
           </button>
         </header>
 
         <div class="review-modal__body">
-          @if (libgenLoading()) {
+          @if (ebookProviderLoading()) {
             <div class="review-skeleton">
               <div class="skeleton-line skeleton-line--wide"></div>
               <div class="skeleton-line"></div>
               <div class="skeleton-line skeleton-line--short"></div>
             </div>
-          } @else if (libgenError()) {
-            <div class="upload__error">{{ libgenError() }}</div>
-          } @else if (libgenResults().length === 0) {
+          } @else if (ebookProviderError()) {
+            <div class="upload__error">{{ ebookProviderError() }}</div>
+          } @else if (ebookProviderResults().length === 0) {
             <div class="upload__empty">
-              <p>No downloadable editions found.</p>
+              <p>No digital editions found.</p>
             </div>
           } @else {
             <ul class="libgen-list">
-              @for (book of libgenResults(); track book.md5 || book.id) {
+              @for (book of ebookProviderResults(); track book.id) {
                 <li class="libgen-card">
                   <div class="libgen-card__info">
+                    <p class="price-card__source">
+                      {{ book.source || "External source" }}
+                      @if (book.score !== null && book.score !== undefined) {
+                        · Score {{ book.score }}
+                      }
+                    </p>
                     <p class="libgen-card__title">{{ book.title }}</p>
                     <p class="libgen-card__author">{{ book.author || "Unknown author" }}</p>
                     <p class="libgen-card__meta">
@@ -303,13 +320,13 @@
                     <button
                       type="button"
                       class="review-card__primary"
-                      (click)="openLibgenDownload(book)"
-                      [disabled]="libgenResolvingId() === book.id"
+                      (click)="openExternalEbookDownload(book)"
+                      [disabled]="ebookProviderResolvingId() === book.id"
                     >
-                      @if (libgenResolvingId() === book.id) {
+                      @if (ebookProviderResolvingId() === book.id) {
                         Resolving...
                       } @else {
-                        Open download
+                        Open link
                       }
                     </button>
                   </div>

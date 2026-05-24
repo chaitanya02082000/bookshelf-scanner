@@ -31,6 +31,61 @@
           } @else {
             <p class="detail__description">No description available yet.</p>
           }
+          <div class="detail__ebooks">
+            @if (!hasRequestedEbooks()) {
+              <button class="detail__cta detail__cta--secondary" (click)="loadEbookOptions()">
+                Find ebook
+              </button>
+            } @else if (isLoadingEbooks()) {
+              <div class="detail__status">Loading digital editions...</div>
+            } @else if (ebookError()) {
+              <div class="detail__status">{{ ebookError() }}</div>
+              <button class="detail__cta detail__cta--secondary" (click)="loadEbookOptions()">
+                Try again
+              </button>
+            } @else {
+              <div class="detail__ebook-actions">
+                <button class="detail__cta detail__cta--secondary" (click)="loadEbookOptions()">
+                  Refresh ebooks
+                </button>
+              </div>
+              <ul class="detail__ebook-list">
+                @for (ebook of ebookResults(); track ebook.id) {
+                  <li class="detail__ebook-card">
+                    <div class="detail__ebook-info">
+                      <p class="detail__ebook-source">
+                        {{ ebook.source || "External source" }}
+                        @if (ebook.score !== null && ebook.score !== undefined) {
+                          · Score {{ ebook.score }}
+                        }
+                      </p>
+                      <p class="detail__ebook-title">{{ ebook.title }}</p>
+                      <p class="detail__ebook-meta">
+                        {{ ebook.author || "Unknown author" }}
+                        @if (ebook.extension) {
+                          · {{ ebook.extension | uppercase }}
+                        }
+                        @if (ebook.year) {
+                          · {{ ebook.year }}
+                        }
+                      </p>
+                    </div>
+                    <button
+                      class="detail__cta"
+                      (click)="openEbookLink(ebook)"
+                      [disabled]="ebookResolvingId() === ebook.id"
+                    >
+                      @if (ebookResolvingId() === ebook.id) {
+                        Opening...
+                      } @else {
+                        Open link
+                      }
+                    </button>
+                  </li>
+                }
+              </ul>
+            }
+          </div>
           <button class="detail__cta" (click)="addToLibrary()">
             Add to library
           </button>

@@ -1,7 +1,7 @@
 import {ChangeDetectionStrategy, Component, computed, signal} from "@angular/core";
 import {CommonModule} from "@angular/common";
 import {inject} from "@angular/core";
-import {Book, PriceOffer} from "@/core/models";
+import {Book, ExternalEbookResult, PriceOffer} from "@/core/models";
 import {BookCatalogService, LibraryService} from "@/core/services";
 import {formatBookSummaryHtml} from "@/core/utils/book-summary";
 
@@ -23,6 +23,11 @@ export class LibraryComponent {
   protected readonly priceOffers = signal<PriceOffer[]>([]);
   protected readonly isLoadingPrices = signal(false);
   protected readonly hasRequestedPrices = signal(false);
+  protected readonly ebookResults = signal<ExternalEbookResult[]>([]);
+  protected readonly isLoadingEbooks = signal(false);
+  protected readonly hasRequestedEbooks = signal(false);
+  protected readonly ebookResolvingId = signal<string | null>(null);
+  protected readonly ebookError = signal("");
   protected readonly modalError = signal("");
 
   async removeBook(id: string) {
@@ -33,9 +38,14 @@ export class LibraryComponent {
     this.selectedBook.set(book);
     this.modalOpen.set(true);
     this.priceOffers.set([]);
+    this.ebookResults.set([]);
     this.modalError.set("");
+    this.ebookError.set("");
     this.isLoadingPrices.set(false);
     this.hasRequestedPrices.set(false);
+    this.isLoadingEbooks.set(false);
+    this.hasRequestedEbooks.set(false);
+    this.ebookResolvingId.set(null);
 
     const summaryText = this.getMeaningfulText(book.summary) || this.getMeaningfulText(book.description);
     if (summaryText) {
@@ -76,12 +86,59 @@ export class LibraryComponent {
     }
   }
 
+  async loadEbookOptions() {
+    const book = this.selectedBook();
+    if (!book || this.isLoadingEbooks()) {
+      return;
+    }
+
+    this.hasRequestedEbooks.set(true);
+    this.ebookResults.set([]);
+    this.ebookError.set("");
+    this.isLoadingEbooks.set(true);
+
+    try {
+      const author = book.authors[0]?.trim();
+      const query = author ? `${book.title} ${author}` : book.title;
+      const result = await this.catalog.searchExternalEbooks(query, 8);
+      this.ebookResults.set(result.items);
+      if (!result.items.length) {
+        this.ebookError.set("No digital editions found.");
+      }
+    } catch (error) {
+      this.ebookError.set(`Failed to search external provider: ${error}`);
+    } finally {
+      this.isLoadingEbooks.set(false);
+    }
+  }
+
+  async openEbookLink(book: ExternalEbookResult) {
+    this.ebookResolvingId.set(book.id);
+    this.ebookError.set("");
+    try {
+      const url = await this.catalog.resolveExternalEbookDownload(book);
+      if (!url) {
+        this.ebookError.set("Open link could not be resolved.");
+        return;
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      this.ebookError.set(`Failed to resolve external link: ${error}`);
+    } finally {
+      this.ebookResolvingId.set(null);
+    }
+  }
+
   closeBookModal() {
     this.modalOpen.set(false);
     this.selectedBook.set(null);
     this.priceOffers.set([]);
+    this.ebookResults.set([]);
     this.hasRequestedPrices.set(false);
+    this.hasRequestedEbooks.set(false);
     this.modalError.set("");
+    this.ebookError.set("");
+    this.ebookResolvingId.set(null);
   }
 
   protected formatOfferPrice(offer: PriceOffer): string {

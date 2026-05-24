@@ -3,6 +3,12 @@ from __future__ import annotations
 import modal
 
 
+BACKEND_ROOT = "/root/bookshelf-scanner/backend"
+AI_ROOT = "/root/bookshelf-scanner/ai"
+OUTPUT_MOUNT_DIR = f"{BACKEND_ROOT}/output"
+MODEL_CACHE_MOUNT_DIR = "/vol/bookshelf-scanner-model-cache"
+
+
 notebook_volume = modal.Volume.from_name(
     "bookshelf-scanner-notebook-data", create_if_missing=True
 )
@@ -41,49 +47,22 @@ image = (
         "torchvision==0.20.1",
         "torchaudio==2.5.1",
     )
-    .add_local_dir(
-        "backend/src",
-        remote_path="/root/bookshelf-scanner/backend/src",
-        copy=True,
-    )
-    .add_local_file(
-        "backend/pyproject.toml",
-        remote_path="/root/bookshelf-scanner/backend/pyproject.toml",
-        copy=True,
-    )
-    .add_local_file(
-        "backend/.env.example",
-        remote_path="/root/bookshelf-scanner/backend/.env.example",
-        copy=True,
-    )
-    .add_local_dir(
-        "ai/src",
-        remote_path="/root/bookshelf-scanner/ai/src",
-        copy=True,
-    )
-    .add_local_file(
-        "ai/pyproject.toml",
-        remote_path="/root/bookshelf-scanner/ai/pyproject.toml",
-        copy=True,
-    )
+    .add_local_dir("backend", remote_path=BACKEND_ROOT, copy=True)
+    .add_local_dir("ai", remote_path=AI_ROOT, copy=True)
     .env(
         {
-            "PYTHONPATH": "/root/bookshelf-scanner/backend:/root/bookshelf-scanner/ai/src",
-            "HF_HOME": "/mnt/bookshelf-scanner-model-cache/huggingface",
-            "TRANSFORMERS_CACHE": "/mnt/bookshelf-scanner-model-cache/huggingface",
-            "TORCH_HOME": "/mnt/bookshelf-scanner-model-cache/torch",
-            "ULTRALYTICS_HOME": "/mnt/bookshelf-scanner-model-cache/ultralytics",
+            "PYTHONPATH": f"{BACKEND_ROOT}:{AI_ROOT}/src",
+            "BOOKSCANNER_OUTPUT_DIR": OUTPUT_MOUNT_DIR,
+            "BOOKSCANNER_PRESERVE_OUTPUTS": "1",
+            "HF_HOME": f"{MODEL_CACHE_MOUNT_DIR}/huggingface",
+            "TRANSFORMERS_CACHE": f"{MODEL_CACHE_MOUNT_DIR}/huggingface",
+            "TORCH_HOME": f"{MODEL_CACHE_MOUNT_DIR}/torch",
+            "ULTRALYTICS_HOME": f"{MODEL_CACHE_MOUNT_DIR}/ultralytics",
         }
-    )
-    .run_commands(
-        "mkdir -p /root/bookshelf-scanner/backend/output/segmentation",
-        "mkdir -p /mnt/bookshelf-scanner-model-cache/huggingface",
-        "mkdir -p /mnt/bookshelf-scanner-model-cache/torch",
-        "mkdir -p /mnt/bookshelf-scanner-model-cache/ultralytics",
     )
 )
 
 common_volumes = {
-    "/mnt/bookshelf-scanner-data": notebook_volume,
-    "/mnt/bookshelf-scanner-model-cache": model_cache_volume,
+    OUTPUT_MOUNT_DIR: notebook_volume,
+    MODEL_CACHE_MOUNT_DIR: model_cache_volume,
 }

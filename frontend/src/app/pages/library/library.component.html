@@ -14,9 +14,9 @@
       <p>No books yet. Upload a shelf to begin the catalog.</p>
     </div>
   } @else {
-    <div class="library__grid">
-      @for (book of books(); track book.id) {
-        <article class="library-card">
+      <div class="library__grid">
+        @for (book of books(); track book.id) {
+          <article class="library-card" (click)="openBookModal(book)">
           <div class="library-card__cover">
             @if (book.coverUrl) {
               <img [src]="book.coverUrl" [alt]="book.title" />
@@ -38,11 +38,98 @@
               }
             </div>
           </div>
-          <button class="library-card__remove" (click)="removeBook(book.id)">
+          <button class="library-card__remove" (click)="$event.stopPropagation(); removeBook(book.id)">
             Remove
           </button>
         </article>
       }
+    </div>
+  }
+
+  @if (modalOpen() && selectedBook(); as book) {
+    <div class="book-modal" role="dialog" aria-modal="true">
+      <button class="book-modal__overlay" type="button" (click)="closeBookModal()" aria-label="Close book details"></button>
+      <div class="book-modal__panel">
+        <button class="book-modal__close" type="button" (click)="closeBookModal()">Close</button>
+        <div class="book-modal__layout">
+          <div class="book-modal__cover">
+            @if (book.coverUrl) {
+              <img [src]="book.coverUrl" [alt]="book.title" />
+            } @else {
+              <div class="book-modal__placeholder">No cover</div>
+            }
+          </div>
+
+          <div class="book-modal__content">
+            <p class="book-modal__eyebrow">Book details</p>
+            <h3>{{ book.title }}</h3>
+            <p class="book-modal__author">{{ book.authors.join(", ") }}</p>
+
+            <div class="book-modal__meta">
+              @if (book.publishedDate) {
+                <span>{{ book.publishedDate }}</span>
+              }
+              @if (book.isbn) {
+                <span>ISBN {{ book.isbn }}</span>
+              }
+              @if (book.source) {
+                <span>{{ book.source }}</span>
+              }
+            </div>
+
+            @if (book.summary || book.description) {
+              <div
+                class="book-modal__summary"
+                [innerHTML]="formatSummary(book.summary || book.description)"
+              ></div>
+            }
+
+            <div class="book-modal__section">
+              @if (!hasRequestedPrices()) {
+                <div class="book-modal__actions">
+                  <button class="book-modal__action" type="button" (click)="loadPriceOffers()">
+                    Find prices
+                  </button>
+                </div>
+              } @else if (isLoadingPrices()) {
+                <div class="book-modal__loading">Loading price matches...</div>
+              } @else if (modalError()) {
+                <div class="book-modal__empty">{{ modalError() }}</div>
+                <div class="book-modal__actions">
+                  <button class="book-modal__action" type="button" (click)="loadPriceOffers()">
+                    Try again
+                  </button>
+                </div>
+              } @else {
+                <div class="book-modal__actions">
+                  <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadPriceOffers()">
+                    Refresh prices
+                  </button>
+                </div>
+                <div class="book-modal__prices">
+                  @for (offer of priceOffers(); track offer.productUrl || offer.asin || offer.title) {
+                    <a
+                      class="price-card"
+                      [href]="offer.productUrl || '#'"
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      <div>
+                        <p class="price-card__source">{{ offer.provider || offer.source }}</p>
+                        <p class="price-card__title">{{ offer.title }}</p>
+                        @if (offer.note) {
+                          <p class="price-card__note">{{ offer.note }}</p>
+                        }
+                      </div>
+                      <p class="price-card__value">{{ formatOfferPrice(offer) }}</p>
+                    </a>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   }
 </section>

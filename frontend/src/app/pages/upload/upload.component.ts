@@ -154,11 +154,24 @@ export class UploadComponent implements OnDestroy {
         ? `${parsed.title} ${parsed.author}`
         : parsed.title;
       const response = await this.catalog.search(query, 6);
-      const bestMatch = this.pickBestCandidate(
+      let bestMatch = this.pickBestCandidate(
         parsed,
         response.items,
         this.highConfidenceThreshold
       );
+
+      const needsBroaderSearch = !bestMatch || bestMatch.score < this.highConfidenceThreshold;
+      if (needsBroaderSearch) {
+        const broaderCandidates = await this.catalog.searchLowConfidenceCandidates(query);
+        const broaderMatch = this.pickBestCandidate(
+          parsed,
+          broaderCandidates,
+          this.highConfidenceThreshold
+        );
+        if (broaderMatch && (!bestMatch || broaderMatch.score > bestMatch.score)) {
+          bestMatch = broaderMatch;
+        }
+      }
 
       if (bestMatch && !this.isDuplicate(bestMatch.book)) {
         if (bestMatch.score >= this.highConfidenceThreshold) {
@@ -197,7 +210,6 @@ export class UploadComponent implements OnDestroy {
     return {
       ...book,
       source: "scan",
-      description: book.description ?? `Imported from scan: ${raw}`,
     };
   }
 

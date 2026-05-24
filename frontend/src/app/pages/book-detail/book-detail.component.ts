@@ -3,6 +3,7 @@ import {CommonModule} from "@angular/common";
 import {ActivatedRoute} from "@angular/router";
 import {Book} from "@/core/models";
 import {BookCatalogService, LibraryService} from "@/core/services";
+import {formatBookSummaryHtml} from "@/core/utils/book-summary";
 
 @Component({
   selector: "app-book-detail",
@@ -31,13 +32,16 @@ export class BookDetailComponent {
     }
   }
 
+  protected formatSummary(summary?: string | null): string {
+    return formatBookSummaryHtml(summary);
+  }
+
   private async load() {
     const workKey = this.route.snapshot.paramMap.get("id");
     if (!workKey) {
       this.isLoading.set(false);
       return;
     }
-    const summary = await this.catalog.getWorkDetails(`/works/${workKey}`);
     const existing = this.library
       .books()
       .find((item) => item.id === `/works/${workKey}`) ?? {
@@ -47,6 +51,10 @@ export class BookDetailComponent {
       coverUrl: null,
       source: "openlibrary",
     };
+    const fallbackQuery = existing.authors[0]?.trim()
+      ? `${existing.title} ${existing.authors[0]}`
+      : existing.title;
+    const summary = await this.catalog.getWorkDetails(`/works/${workKey}`, fallbackQuery);
 
     this.book.set({...existing, ...summary});
     this.isLoading.set(false);

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import shutil
 import time
 from fastapi import APIRouter, File, Request, UploadFile
@@ -98,7 +99,33 @@ async def predict(request: Request, file: UploadFile = File(...)) -> StreamingRe
             if client_disconnected:
                 logger.info("Client disconnected. Stopping processing.")
 
-            # Clean up output directory
-            book_predictor.cleanup()
+            preserve_outputs = os.getenv("BOOKSCANNER_PRESERVE_OUTPUTS", "0").lower() in {
+                "1",
+                "true",
+                "yes",
+            }
+            if preserve_outputs:
+                logger.info("Preserving output directory for inspection.")
+                marker_path = os.path.join(book_predictor.output_dir, "_modal_last_request.txt")
+                output_files: list[str] = []
+                for root, _, files in os.walk(book_predictor.output_dir):
+                    for file_name in files:
+                        full_path = os.path.join(root, file_name)
+                        output_files.append(os.path.relpath(full_path, book_predictor.output_dir))
+
+                with open(marker_path, "w", encoding="utf-8") as marker_file:
+                    marker_file.write(f"timestamp={int(time.time())}\n")
+                    marker_file.write(f"output_dir={book_predictor.output_dir}\n")
+                    marker_file.write("files=\n")
+                    for relative_path in sorted(output_files):
+                        marker_file.write(f"- {relative_path}\n")
+
+                output_volume = getattr(request.app.state, "output_volume", None)
+                if output_volume is not None:
+                    output_volume.commit()
+                    logger.info("Committed preserved outputs to mounted volume.")
+            else:
+                # Clean up output directory
+                book_predictor.cleanup()
 
     return StreamingResponse(stream_generator(), media_type="application/json")

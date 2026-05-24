@@ -8,5 +8,6 @@ export interface Book {
   publishedDate?: string | null;
   pageCount?: number | null;
   isbn?: string | null;
-  source?: "openlibrary" | "scan";
+  source?: "openlibrary" | "googlebooks" | "scan";
+  summary?: string | null;
 }

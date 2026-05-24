@@ -68,5 +68,6 @@ This does not start the backend. It just confirms the image is available and the
 - The image copies `backend/src` and `ai/src` into the image, so notebooks and the backend can import project code without relying on a slow mounted source tree.
 - The attached volume appears under `/mnt/bookshelf-scanner-data`.
 - Model caches persist under `/mnt/bookshelf-scanner-model-cache`.
+- Scan outputs and temporary images are written under `/mnt/bookshelf-scanner-data/output`.
 - If you change Python dependencies, redeploy the image.
 - If you change backend or AI source code, rerun `modal serve` or redeploy the backend app.

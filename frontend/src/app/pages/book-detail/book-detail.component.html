@@ -23,9 +23,14 @@
               <span>{{ book.pageCount }} pages</span>
             }
           </div>
-          <p class="detail__description">
-            {{ book.description || "No description available yet." }}
-          </p>
+          @if (book.summary || book.description) {
+            <div
+              class="detail__description"
+              [innerHTML]="formatSummary(book.summary || book.description)"
+            ></div>
+          } @else {
+            <p class="detail__description">No description available yet.</p>
+          }
           <button class="detail__cta" (click)="addToLibrary()">
             Add to library
           </button>

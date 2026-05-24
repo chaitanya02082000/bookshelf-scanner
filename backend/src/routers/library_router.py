@@ -1,3 +1,5 @@
+from urllib.parse import unquote
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from src.models import BookMetadata, ResultWithArray, ResultWithData
@@ -24,12 +26,12 @@ def upsert_book(
     return ResultWithData[BookMetadata].succeed(saved)
 
 
-@library_router.delete("/books/{book_id}")
+@library_router.delete("/books/{book_id:path}")
 def delete_book(
     book_id: str,
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> ResultWithData[bool]:
-    deleted = library_service.delete_book(user, book_id)
+    deleted = library_service.delete_book(user, unquote(book_id))
     if not deleted:
         raise HTTPException(status_code=404, detail="Book not found")
     return ResultWithData[bool].succeed(True)

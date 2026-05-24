@@ -1,4 +1,5 @@
 export const environment = {
   production: false,
-  apiUrl: "https://9217-15-253-18-138.ngrok-free.app/api",
+  apiUrl: "https://chaitanyakumar095--bookshelf-scanner-backend-fastapi-app-dev.modal.run/api",
+  googleBooksApiKey: "AIzaSyAiOb-JE2SRKybH6NKMW3HG_6ysmUpyf1U",
 };

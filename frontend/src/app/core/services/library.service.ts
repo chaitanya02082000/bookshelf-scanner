@@ -2,6 +2,7 @@ import {Injectable, inject, signal} from "@angular/core";
 import {firstValueFrom, Subscription} from "rxjs";
 import {AuthService} from "@auth0/auth0-angular";
 import {Book} from "@/core/models";
+import {BookCatalogService} from "@/core/services/book-catalog.service";
 import {environment} from "@/../environments/environment";
 
 interface ApiResult<T> {
@@ -15,6 +16,7 @@ interface ApiResult<T> {
 })
 export class LibraryService {
   private readonly auth = inject(AuthService);
+  private readonly catalog = inject(BookCatalogService);
   private readonly apiUrl = environment.apiUrl;
   private readonly libraryState = signal<Book[]>([]);
   private authSubscription: Subscription;
@@ -36,18 +38,76 @@ export class LibraryService {
       return;
     }
 
+    const enrichedBook = await this.enrichBook(book);
+    const result = await this.saveBook(enrichedBook);
+
+    if (result?.success && result.data) {
+      this.libraryState.update((state) => [result.data!, ...state]);
+    }
+  }
+
+  async ensureBookSummary(book: Book): Promise<Book> {
+    const enrichedBook = await this.enrichBook(book);
+    if (enrichedBook === book) {
+      return book;
+    }
+
+    const result = await this.saveBook(enrichedBook);
+    if (result?.success && result.data) {
+      this.libraryState.update((state) =>
+        state.map((item) => (item.id === result.data!.id ? result.data! : item))
+      );
+      return result.data;
+    }
+
+    return enrichedBook;
+  }
+
+  private async saveBook(book: Book) {
     const payload = {...book, source: book.source ?? "scan"};
-    const result = await this.authorizedFetch<Book>(`${this.apiUrl}/library/books`, {
+    return this.authorizedFetch<Book>(`${this.apiUrl}/library/books`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
     });
+  }
 
-    if (result?.success && result.data) {
-      this.libraryState.update((state) => [result.data!, ...state]);
+  private async enrichBook(book: Book): Promise<Book> {
+    const supportsRemoteDetails =
+      book.id.startsWith("/works/") || book.id.startsWith("googlebooks:");
+    const hasSummary =
+      this.hasMeaningfulText(book.summary) || this.hasMeaningfulText(book.description);
+    if (!supportsRemoteDetails || hasSummary) {
+      return book;
     }
+
+    try {
+      const details = await this.catalog.getWorkDetails(book.id, this.buildFallbackQuery(book));
+      const summary = details.summary ?? details.description ?? null;
+      const currentDescription = this.hasMeaningfulText(book.description)
+        ? book.description
+        : null;
+      return {
+        ...book,
+        ...details,
+        summary,
+        description: details.description ?? summary ?? currentDescription,
+      };
+    } catch {
+      return book;
+    }
+  }
+
+  private hasMeaningfulText(value?: string | null) {
+    const text = value?.trim();
+    return !!text && !text.startsWith("Imported from scan:");
+  }
+
+  private buildFallbackQuery(book: Book) {
+    const author = book.authors[0]?.trim();
+    return author ? `${book.title} ${author}` : book.title;
   }
 
   async removeBook(id: string) {

@@ -48,6 +48,7 @@
   padding: 0.75rem;
   position: relative;
   overflow: hidden;
+  cursor: pointer;
 }
 
 .library-card::before {
@@ -132,6 +133,214 @@
   letter-spacing: 0.06rem;
   font-size: 0.68rem;
   cursor: pointer;
+  position: relative;
+  z-index: 1;
+}
+
+.book-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+}
+
+.book-modal__overlay {
+  position: absolute;
+  inset: 0;
+  border: none;
+  background: oklch(0.12 0.02 60 / 0.5);
+  backdrop-filter: blur(14px);
+}
+
+.book-modal__panel {
+  position: relative;
+  width: min(960px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  background: var(--bs-surface);
+  border: 1px solid var(--bs-border-strong);
+  box-shadow: 0 24px 60px oklch(0.08 0.02 60 / 0.45);
+  padding: var(--bs-space-5);
+}
+
+.book-modal__close {
+  position: absolute;
+  top: var(--bs-space-3);
+  right: var(--bs-space-3);
+  border: 1px solid var(--bs-border-strong);
+  background: transparent;
+  color: var(--bs-ink);
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.06rem;
+  font-size: 0.72rem;
+}
+
+.book-modal__layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: var(--bs-space-5);
+}
+
+.book-modal__cover {
+  aspect-ratio: 2 / 3;
+  background: var(--bs-surface-soft);
+  border: 1px solid var(--bs-border);
+  overflow: hidden;
+}
+
+.book-modal__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.book-modal__placeholder {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--bs-ink-faded);
+}
+
+.book-modal__content {
+  display: grid;
+  gap: var(--bs-space-3);
+  align-content: start;
+}
+
+.book-modal__eyebrow,
+.book-modal__section-label,
+.price-card__source {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.12rem;
+  font-size: 0.7rem;
+  color: var(--bs-ink-faded);
+}
+
+.book-modal__content h3,
+.book-modal__author,
+.book-modal__section {
+  margin: 0;
+}
+
+.book-modal__author {
+  color: var(--bs-ink-soft);
+}
+
+.book-modal__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bs-space-2);
+}
+
+.book-modal__meta span {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--bs-border);
+  background: var(--bs-surface-soft);
+  font-size: 0.75rem;
+}
+
+.book-modal__summary {
+  display: grid;
+  gap: 0.85rem;
+  color: var(--bs-ink-soft);
+  line-height: 1.6;
+}
+
+.book-modal__summary :is(p, h4, ul) {
+  margin: 0;
+}
+
+.book-modal__summary h4 {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1rem;
+  color: var(--bs-ink-faded);
+}
+
+.book-modal__summary ul {
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.book-modal__summary li::marker {
+  color: var(--bs-ink-faded);
+}
+
+.book-modal__section {
+  display: grid;
+  gap: var(--bs-space-3);
+}
+
+.book-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bs-space-2);
+}
+
+.book-modal__action {
+  border: 1px solid var(--bs-border-strong);
+  background: var(--bs-ink);
+  color: var(--bs-surface);
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.book-modal__action--secondary {
+  background: transparent;
+  color: var(--bs-ink);
+}
+
+.book-modal__loading,
+.book-modal__empty {
+  padding: var(--bs-space-3);
+  border: 1px dashed var(--bs-border);
+  background: var(--bs-surface-soft);
+  color: var(--bs-ink-faded);
+}
+
+.book-modal__prices {
+  display: grid;
+  gap: var(--bs-space-2);
+}
+
+.price-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--bs-space-3);
+  padding: var(--bs-space-3);
+  border: 1px solid var(--bs-border-strong);
+  background: var(--bs-surface-soft);
+  color: inherit;
+  text-decoration: none;
+}
+
+.price-card__title,
+.price-card__value,
+.price-card__note {
+  margin: 0;
+}
+
+.price-card__title {
+  font-weight: 600;
+}
+
+.price-card__note {
+  margin-top: 0.2rem;
+  color: var(--bs-ink-faded);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.price-card__value {
+  font-size: 1rem;
+  font-weight: 700;
 }
 
 @media (max-width: 600px) {
@@ -141,5 +350,14 @@
 
   .library-card {
     width: auto;
+  }
+
+  .book-modal__panel {
+    width: calc(100vw - 1rem);
+    padding: var(--bs-space-4);
+  }
+
+  .book-modal__layout {
+    grid-template-columns: 1fr;
   }
 }

@@ -1,5 +1,9 @@
 from pydantic import BaseModel
 from pydantic.alias_generators import to_camel
+from typing import Generic, TypeVar
+
+
+TData = TypeVar("TData")
 
 class Result(BaseModel):
     """Result class to represent the output of a request. 
@@ -25,7 +29,7 @@ class Result(BaseModel):
         return Result(success=False, error=error or "An error occurred")
     
 
-class ResultWithData[TData](Result):
+class ResultWithData(Result, Generic[TData]):
     """Result class with payload"""
 
     data: TData | None = None
@@ -42,7 +46,7 @@ class ResultWithData[TData](Result):
         return ResultWithData[TData](success=False, error=error or "An error occurred")
     
 
-class ResultWithArray[TData](ResultWithData[list[TData]]):
+class ResultWithArray(ResultWithData[list[TData]], Generic[TData]):
     """Result class with array payload.
     This class equivalent to `ResultWithData[list[TData]]` but with a more descriptive name and shorter syntax.
     For example, `ResultWithArray[int]` is equivalent to `ResultWithData[list[int]]`.

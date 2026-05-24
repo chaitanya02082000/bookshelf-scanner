@@ -8,6 +8,7 @@ class BookMetadata(BaseModel):
     authors: list[str]
     cover_url: str | None = None
     description: str | None = None
+    summary: str | None = None
     subjects: list[str] | None = None
     published_date: str | None = None
     page_count: int | None = None

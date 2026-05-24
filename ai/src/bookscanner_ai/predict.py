@@ -28,7 +28,9 @@ class BookPredictor:
     text_backend: str
     ocr_enabled: bool
     prompt: str
-    output_dir = os.path.abspath("output")
+    output_dir = os.path.abspath(
+        os.getenv("BOOKSCANNER_OUTPUT_DIR", "output")
+    )
     yolo_initialized = False
     llm_initialized = False
     logger = logging.getLogger(__name__)

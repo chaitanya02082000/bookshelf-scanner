@@ -22,21 +22,25 @@ const prodApiUrl = normalizeApiUrl(
     process.env.FRONTEND_API_URL ??
     "http://localhost:8000/api"
 );
+const googleBooksApiKey =
+  process.env.FRONTEND_GOOGLE_BOOKS_API_KEY ??
+  "AIzaSyAiOb-JE2SRKybH6NKMW3HG_6ysmUpyf1U";
 
-const renderEnvironment = (production, apiUrl) => `export const environment = {
+const renderEnvironment = (production, apiUrl, booksApiKey) => `export const environment = {
   production: ${production},
   apiUrl: ${JSON.stringify(apiUrl)},
+  googleBooksApiKey: ${JSON.stringify(booksApiKey)},
 };
 `;
 
 await mkdir(environmentsDir, {recursive: true});
 await writeFile(
   path.join(environmentsDir, "environment.ts"),
-  renderEnvironment(false, devApiUrl),
+  renderEnvironment(false, devApiUrl, googleBooksApiKey),
   "utf8"
 );
 await writeFile(
   path.join(environmentsDir, "environment.prod.ts"),
-  renderEnvironment(true, prodApiUrl),
+  renderEnvironment(true, prodApiUrl, googleBooksApiKey),
   "utf8"
 );

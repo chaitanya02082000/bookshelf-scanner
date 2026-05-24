@@ -77,9 +77,32 @@
 }
 
 .detail__description {
+  display: grid;
+  gap: 0.9rem;
   margin: 0 0 var(--bs-space-4);
   color: var(--bs-ink-soft);
   line-height: 1.6;
+}
+
+.detail__description :is(p, h4, ul) {
+  margin: 0;
+}
+
+.detail__description h4 {
+  text-transform: uppercase;
+  letter-spacing: 0.12rem;
+  font-size: 0.78rem;
+  color: var(--bs-ink-faded);
+}
+
+.detail__description ul {
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.detail__description li::marker {
+  color: var(--bs-ink-faded);
 }
 
 .detail__cta {

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timezone
+import logging
+import math
 import os
 import re
 from typing import Any
@@ -10,11 +12,13 @@ import requests
 
 from src.models import BookRecommendation
 from src.services.auth_service import AuthenticatedUser
+from src.services.embedding_service import embedding_service
 from src.services.mongo_service import mongo_service
 
 
 WeightedTerms = defaultdict[str, float]
 RecommendationProfile = dict[str, WeightedTerms]
+logger = logging.getLogger(__name__)
 
 
 class RecommendationService:
@@ -63,20 +67,199 @@ class RecommendationService:
             return []
 
         profile = self._build_profile(library_docs, search_docs)
+        collaborative_candidates = self._build_collaborative_candidates(
+            user, library_docs
+        )
         candidate_queries = self._build_candidate_queries(profile)
-        if not candidate_queries:
+        if not candidate_queries and not collaborative_candidates:
             return []
 
         owned_ids = {str(doc.get("id", "")) for doc in library_docs}
-        scored_candidates: dict[str, BookRecommendation] = {}
+        scored_candidates: dict[str, BookRecommendation] = {
+            candidate_id: candidate
+            for candidate_id, candidate in collaborative_candidates.items()
+        }
         for query in candidate_queries[:6]:
             for candidate in self._search_candidates(query, 10):
                 if candidate.id in owned_ids:
                     continue
-                enriched = self._score_candidate(candidate, profile, query)
+                collaborative_candidate = collaborative_candidates.get(candidate.id)
+                enriched = self._score_candidate(
+                    candidate,
+                    profile,
+                    collaborative_score=(
+                        collaborative_candidate.collaborative_score
+                        if collaborative_candidate
+                        else 0.0
+                    ),
+                    matched_books=(
+                        collaborative_candidate.matched_books
+                        if collaborative_candidate
+                        else None
+                    ),
+                    source_query=query,
+                )
                 current = scored_candidates.get(enriched.id)
-                if current is None or enriched.score > current.score:
+                if current is None or enriched.content_score > current.content_score:
                     scored_candidates[enriched.id] = enriched
+
+        for candidate_id, candidate in list(scored_candidates.items()):
+            if candidate.content_score > 0:
+                continue
+            scored_candidates[candidate_id] = self._score_candidate(
+                candidate,
+                profile,
+                collaborative_score=candidate.collaborative_score,
+                matched_books=candidate.matched_books,
+            )
+
+        embedding_scores = self._build_embedding_scores(
+            list(scored_candidates.values()), profile, library_docs, search_docs
+        )
+        if embedding_scores:
+            for candidate_id, candidate in list(scored_candidates.items()):
+                scored_candidates[candidate_id] = candidate.model_copy(
+                    update={
+                        "embedding_score": round(
+                            embedding_scores.get(candidate_id, 0.0), 4
+                        )
+                    }
+                )
+
+        ranked = self._rank_hybrid_candidates(list(scored_candidates.values()))
+        return self._diversify(ranked, limit)
+
+    def _build_embedding_scores(
+        self,
+        candidates: list[BookRecommendation],
+        profile: RecommendationProfile,
+        library_docs: list[dict[str, Any]],
+        search_docs: list[dict[str, Any]],
+    ) -> dict[str, float]:
+        if not candidates:
+            return {}
+
+        profile_text = self._build_profile_text(profile, library_docs, search_docs)
+        if not profile_text:
+            return {}
+
+        try:
+            profile_embedding = embedding_service.embed_query(profile_text)
+            candidate_embeddings = embedding_service.embed_documents(
+                [self._candidate_embedding_text(candidate) for candidate in candidates]
+            )
+        except Exception as exc:
+            logger.warning("Embedding scoring failed: %s", exc)
+            return {}
+
+        if profile_embedding is None or candidate_embeddings is None:
+            return {}
+
+        scores: dict[str, float] = {}
+        for index, candidate in enumerate(candidates):
+            cosine = embedding_service.cosine_similarity(
+                profile_embedding, candidate_embeddings[index]
+            )
+            scores[candidate.id] = max(cosine, 0.0)
+        return scores
+
+    def _build_collaborative_candidates(
+        self, user: AuthenticatedUser, library_docs: list[dict[str, Any]]
+    ) -> dict[str, BookRecommendation]:
+        owned_ids = {
+            str(doc.get("id", "")).strip()
+            for doc in library_docs
+            if str(doc.get("id", "")).strip()
+        }
+        if not owned_ids:
+            return {}
+
+        books_collection = mongo_service.get_books_collection()
+        overlap_docs = list(
+            books_collection.find(
+                {
+                    "auth0UserId": {"$ne": user.auth0_user_id},
+                    "id": {"$in": list(owned_ids)},
+                },
+                {"_id": 0, "auth0UserId": 1, "id": 1},
+            )
+        )
+        if not overlap_docs:
+            return {}
+
+        similar_user_overlap: dict[str, set[str]] = defaultdict(set)
+        for doc in overlap_docs:
+            similar_user_overlap[str(doc.get("auth0UserId", ""))].add(
+                str(doc.get("id", ""))
+            )
+
+        similar_user_ids = [user_id for user_id in similar_user_overlap if user_id]
+        if not similar_user_ids:
+            return {}
+
+        similar_user_books = list(
+            books_collection.find(
+                {"auth0UserId": {"$in": similar_user_ids}},
+                {"_id": 0, "auth0UserId": 1, "createdAt": 0, "updatedAt": 0},
+            )
+        )
+
+        per_user_books: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for doc in similar_user_books:
+            user_id = str(doc.get("auth0UserId", ""))
+            if user_id:
+                per_user_books[user_id].append(doc)
+
+        candidate_scores: dict[str, float] = defaultdict(float)
+        candidate_books: dict[str, BookRecommendation] = {}
+        candidate_support: dict[str, dict[str, float]] = defaultdict(
+            lambda: defaultdict(float)
+        )
+        source_titles = {
+            str(doc.get("id", "")): str(doc.get("title", "")).strip()
+            for doc in library_docs
+        }
+
+        for similar_user_id, user_books in per_user_books.items():
+            overlap_ids = similar_user_overlap.get(similar_user_id, set())
+            if not overlap_ids:
+                continue
+            library_size = max(len(user_books), 1)
+            overlap_weight = len(overlap_ids) / math.sqrt(library_size)
+            if overlap_weight <= 0:
+                continue
+
+            for doc in user_books:
+                book_id = str(doc.get("id", "")).strip()
+                if not book_id or book_id in owned_ids or book_id in overlap_ids:
+                    continue
+                candidate_scores[book_id] += overlap_weight
+                for source_book_id in overlap_ids:
+                    candidate_support[book_id][source_book_id] += overlap_weight
+
+                candidate = self._map_saved_doc_to_recommendation(doc)
+                current = candidate_books.get(book_id)
+                if current is None or self._candidate_richness(candidate) > self._candidate_richness(current):
+                    candidate_books[book_id] = candidate
+
+        collaborative_candidates: dict[str, BookRecommendation] = {}
+        for book_id, candidate in candidate_books.items():
+            support = candidate_support.get(book_id, {})
+            matched_books = [
+                source_titles.get(source_id, "")
+                for source_id, _ in sorted(
+                    support.items(), key=lambda item: item[1], reverse=True
+                )[:3]
+                if source_titles.get(source_id, "")
+            ]
+            collaborative_candidates[book_id] = candidate.model_copy(
+                update={
+                    "collaborative_score": round(candidate_scores.get(book_id, 0.0), 4),
+                    "matched_books": matched_books,
+                }
+            )
+
+        return collaborative_candidates
 
         ranked = sorted(
             scored_candidates.values(),
@@ -112,7 +295,7 @@ class RecommendationService:
                 profile["authors"][self._normalize_text(author)] += weight * 1.1
             for subject in doc.get("selectedSubjects") or []:
                 profile["subjects"][self._normalize_text(subject)] += weight
-            for token in self._tokenize(doc.get("selectedTitle", "")):
+            for token in self._tokenize(doc.get("selectedTitle") or ""):
                 profile["keywords"][token] += weight * 0.9
 
         return profile
@@ -242,7 +425,9 @@ class RecommendationService:
         self,
         candidate: BookRecommendation,
         profile: RecommendationProfile,
-        source_query: str,
+        collaborative_score: float = 0.0,
+        matched_books: list[str] | None = None,
+        source_query: str = "",
     ) -> BookRecommendation:
         author_terms = [self._normalize_text(author) for author in candidate.authors]
         subject_terms = [self._normalize_text(subject) for subject in candidate.subjects or []]
@@ -260,7 +445,7 @@ class RecommendationService:
         source_query_tokens = set(self._tokenize(source_query))
         source_match_boost = 0.2 if source_query_tokens.intersection(candidate_tokens) else 0
 
-        score = (
+        content_score = (
             (author_score * 0.38)
             + (subject_score * 0.32)
             + (query_score * 0.18)
@@ -268,16 +453,67 @@ class RecommendationService:
             + source_match_boost
         )
 
-        reason = self._build_reason(matched_authors, matched_subjects, matched_queries)
         return candidate.model_copy(
             update={
-                "score": round(score, 4),
-                "reason": reason,
+                "content_score": round(content_score, 4),
+                "collaborative_score": round(collaborative_score, 4),
+                "matched_books": matched_books or candidate.matched_books,
                 "matched_authors": matched_authors[:3],
                 "matched_subjects": matched_subjects[:3],
                 "matched_queries": matched_queries[:4],
             }
         )
+
+    def _rank_hybrid_candidates(
+        self, candidates: list[BookRecommendation]
+    ) -> list[BookRecommendation]:
+        max_embedding = max((candidate.embedding_score for candidate in candidates), default=0.0)
+        max_content = max((candidate.content_score for candidate in candidates), default=0.0)
+        max_collaborative = max(
+            (candidate.collaborative_score for candidate in candidates), default=0.0
+        )
+
+        ranked: list[BookRecommendation] = []
+        for candidate in candidates:
+            embedding_normalized = (
+                candidate.embedding_score / max_embedding if max_embedding > 0 else 0.0
+            )
+            content_normalized = (
+                candidate.content_score / max_content if max_content > 0 else 0.0
+            )
+            collaborative_normalized = (
+                candidate.collaborative_score / max_collaborative
+                if max_collaborative > 0
+                else 0.0
+            )
+            score = (
+                (embedding_normalized * 0.45)
+                + (content_normalized * 0.3)
+                + (collaborative_normalized * 0.25)
+            )
+            if embedding_normalized > 0 and collaborative_normalized > 0:
+                score += 0.06 * min(embedding_normalized, collaborative_normalized)
+            if embedding_normalized > 0 and content_normalized > 0:
+                score += 0.04 * min(embedding_normalized, content_normalized)
+
+            reason = self._build_reason(
+                candidate.matched_authors,
+                candidate.matched_subjects,
+                candidate.matched_queries,
+                candidate.matched_books,
+                max(embedding_normalized, content_normalized),
+                collaborative_normalized,
+            )
+            ranked.append(
+                candidate.model_copy(
+                    update={
+                        "score": round(score, 4),
+                        "reason": reason,
+                    }
+                )
+            )
+
+        return sorted(ranked, key=lambda item: item.score, reverse=True)
 
     def _weighted_overlap(
         self, terms: list[str], profile_weights: dict[str, float]
@@ -300,7 +536,14 @@ class RecommendationService:
         matched_authors: list[str],
         matched_subjects: list[str],
         matched_queries: list[str],
+        matched_books: list[str],
+        content_score: float,
+        collaborative_score: float,
     ) -> str:
+        if matched_books and collaborative_score > content_score:
+            return f"Because readers who kept {matched_books[0]} also kept this"
+        if matched_books and content_score > 0:
+            return f"Because it matches your library themes and readers who kept {matched_books[0]} also kept it"
         if matched_authors:
             return f"Because you keep books by {matched_authors[0]}"
         if matched_subjects:
@@ -324,6 +567,47 @@ class RecommendationService:
             if len(selected) >= limit:
                 break
         return selected
+
+    def _build_profile_text(
+        self,
+        profile: RecommendationProfile,
+        library_docs: list[dict[str, Any]],
+        search_docs: list[dict[str, Any]],
+    ) -> str:
+        top_titles = [
+            str(doc.get("title", "")).strip()
+            for doc in library_docs[:5]
+            if str(doc.get("title", "")).strip()
+        ]
+        top_authors = self._top_terms(profile["authors"], 5)
+        top_subjects = self._top_terms(profile["subjects"], 6)
+        top_queries = [
+            (doc.get("normalizedQuery") or doc.get("query") or "").strip()
+            for doc in search_docs[:5]
+            if (doc.get("normalizedQuery") or doc.get("query") or "").strip()
+        ]
+        top_keywords = self._top_terms(profile["keywords"], 6)
+
+        sections = [
+            f"Saved titles: {'; '.join(top_titles)}" if top_titles else "",
+            f"Preferred authors: {'; '.join(top_authors)}" if top_authors else "",
+            f"Preferred subjects: {'; '.join(top_subjects)}" if top_subjects else "",
+            f"Recent searches: {'; '.join(top_queries)}" if top_queries else "",
+            f"Frequent themes: {'; '.join(top_keywords)}" if top_keywords else "",
+        ]
+        return "\n".join(section for section in sections if section)
+
+    def _candidate_embedding_text(self, candidate: BookRecommendation) -> str:
+        parts = [candidate.title]
+        if candidate.authors:
+            parts.append(f"Authors: {'; '.join(candidate.authors[:4])}")
+        if candidate.subjects:
+            parts.append(f"Subjects: {'; '.join(candidate.subjects[:8])}")
+        if candidate.summary:
+            parts.append(f"Summary: {candidate.summary}")
+        elif candidate.description:
+            parts.append(f"Description: {candidate.description}")
+        return "\n".join(part for part in parts if part)
 
     def _kept_book_weight(self, created_at: str | None) -> float:
         if not created_at:
@@ -349,6 +633,32 @@ class RecommendationService:
             if value
         )
 
+    def _map_saved_doc_to_recommendation(
+        self, doc: dict[str, Any]
+    ) -> BookRecommendation:
+        return BookRecommendation(
+            id=str(doc.get("id", "")).strip(),
+            title=str(doc.get("title", "")).strip(),
+            authors=[
+                str(author).strip()
+                for author in doc.get("authors") or []
+                if str(author).strip()
+            ],
+            cover_url=doc.get("coverUrl") or doc.get("cover_url"),
+            description=doc.get("description"),
+            summary=doc.get("summary"),
+            subjects=[
+                str(subject).strip()
+                for subject in doc.get("subjects") or []
+                if str(subject).strip()
+            ],
+            published_date=doc.get("publishedDate") or doc.get("published_date"),
+            page_count=doc.get("pageCount") or doc.get("page_count"),
+            isbn=doc.get("isbn"),
+            source=doc.get("source") or "library",
+            score=0,
+        )
+
     def _dedupe_key(self, candidate: BookRecommendation) -> str:
         author = self._normalize_text(candidate.authors[0]) if candidate.authors else ""
         return f"{self._normalize_text(candidate.title)}::{author}"
@@ -361,7 +671,9 @@ class RecommendationService:
             )[:limit]
         ]
 
-    def _tokenize(self, value: str) -> list[str]:
+    def _tokenize(self, value: str | None) -> list[str]:
+        if not value:
+            return []
         tokens = re.findall(r"[a-z0-9']+", value.lower())
         return [token for token in tokens if len(token) > 2 and token not in self.stop_words]
 

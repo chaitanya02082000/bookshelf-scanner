@@ -19,6 +19,7 @@ pymongo = "^4.10.1"
 PyJWT = {version = "^2.10.1", extras = ["crypto"]}
 python-dotenv = "^1.0.1"
 requests = "^2.32.3"
+sentence-transformers = "^3.4.1"
 
 
 [[tool.poetry.source]]

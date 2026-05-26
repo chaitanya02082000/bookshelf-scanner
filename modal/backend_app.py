@@ -44,6 +44,7 @@ image = (
         "pymongo==4.10.1",
         "PyJWT[crypto]==2.10.1",
         "python-dotenv==1.0.1",
+        "sentence-transformers==3.4.1",
         "amzpy==1.0.0",
         "ultralytics==8.3.47",
         "opencv-contrib-python==4.10.0.84",

@@ -3,12 +3,13 @@ import {
   Component,
   ElementRef,
   HostListener,
+  inject,
   viewChild,
   signal,
 } from "@angular/core";
 import {CommonModule} from "@angular/common";
 import {FormsModule} from "@angular/forms";
-import {BookCatalogService, LibraryService} from "@/core/services";
+import {BookCatalogService, LibraryService, SearchHistoryService} from "@/core/services";
 import {Book} from "@/core/models";
 
 @Component({
@@ -37,6 +38,7 @@ export class SearchComponent {
   protected readonly searchOpen = signal(false);
   protected readonly isSearching = signal(false);
   protected readonly loaderVariant = signal<string>(this.randomLoaderVariant());
+  private readonly searchHistory = inject(SearchHistoryService);
 
   constructor(
     protected readonly catalog: BookCatalogService,
@@ -81,13 +83,15 @@ export class SearchComponent {
       const response = await this.catalog.search(value, 12);
       this.results.set(response.items);
       this.total.set(response.total);
+      await this.searchHistory.recordSearch(value, "manual-search");
     } finally {
       this.isSearching.set(false);
     }
   }
 
-  addToLibrary(book: Book) {
-    this.library.addBook(book);
+  async addToLibrary(book: Book) {
+    await this.library.addBook(book);
+    await this.searchHistory.recordSearch(this.query(), "search-add", book);
   }
 
   private randomLoaderVariant() {

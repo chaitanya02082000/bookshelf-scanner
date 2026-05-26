@@ -1,8 +1,8 @@
-import {ChangeDetectionStrategy, Component, computed, signal} from "@angular/core";
+import {ChangeDetectionStrategy, Component, computed, effect, signal} from "@angular/core";
 import {CommonModule} from "@angular/common";
 import {inject} from "@angular/core";
-import {Book, ExternalEbookResult, PriceOffer} from "@/core/models";
-import {BookCatalogService, LibraryService} from "@/core/services";
+import {Book, BookRecommendation, ExternalEbookResult, PriceOffer} from "@/core/models";
+import {BookCatalogService, LibraryService, RecommendationService} from "@/core/services";
 import {formatBookSummaryHtml} from "@/core/utils/book-summary";
 
 @Component({
@@ -14,12 +14,26 @@ import {formatBookSummaryHtml} from "@/core/utils/book-summary";
   imports: [CommonModule],
 })
 export class LibraryComponent {
+  private readonly loaderVariants = [
+    "library-loader--10",
+    "library-loader--11",
+    "library-loader--12",
+    "library-loader--14",
+    "library-loader--18",
+    "library-loader--19",
+  ] as const;
   private readonly libraryService = inject(LibraryService);
   private readonly catalog = inject(BookCatalogService);
+  private readonly recommendationService = inject(RecommendationService);
   protected readonly books = this.libraryService.books;
   protected readonly hasBooks = computed(() => this.books().length > 0);
+  protected readonly savedBookCount = computed(() => this.books().length);
   protected readonly selectedBook = signal<Book | null>(null);
   protected readonly modalOpen = signal(false);
+  protected readonly recommendations = signal<BookRecommendation[]>([]);
+  protected readonly isLoadingRecommendations = signal(false);
+  protected readonly recommendationsError = signal("");
+  protected readonly recommendationLoaderVariant = signal<string>(this.randomLoaderVariant());
   protected readonly priceOffers = signal<PriceOffer[]>([]);
   protected readonly isLoadingPrices = signal(false);
   protected readonly hasRequestedPrices = signal(false);
@@ -29,6 +43,13 @@ export class LibraryComponent {
   protected readonly ebookResolvingId = signal<string | null>(null);
   protected readonly ebookError = signal("");
   protected readonly modalError = signal("");
+
+  constructor() {
+    effect(() => {
+      this.books();
+      void this.loadRecommendations();
+    });
+  }
 
   async removeBook(id: string) {
     await this.libraryService.removeBook(id);
@@ -52,10 +73,18 @@ export class LibraryComponent {
       return;
     }
 
-    const enrichedBook = await this.libraryService.ensureBookSummary(book);
+    const enrichedBook = this.isBookInLibrary(book)
+      ? await this.libraryService.ensureBookSummary(book)
+      : await this.loadRemoteBookSummary(book);
     if (this.selectedBook()?.id === enrichedBook.id) {
       this.selectedBook.set(enrichedBook);
     }
+  }
+
+  async addRecommendedBook(book: BookRecommendation, event?: Event) {
+    event?.stopPropagation();
+    await this.libraryService.addBook(book);
+    this.recommendations.update((items) => items.filter((item) => item.id !== book.id));
   }
 
   async loadPriceOffers() {
@@ -155,11 +184,48 @@ export class LibraryComponent {
     return formatBookSummaryHtml(summary);
   }
 
+  private async loadRecommendations() {
+    this.recommendationLoaderVariant.set(this.randomLoaderVariant());
+    this.isLoadingRecommendations.set(true);
+    this.recommendationsError.set("");
+    try {
+      const recommendations = await this.recommendationService.listBooks(8);
+      this.recommendations.set(recommendations);
+    } catch (error) {
+      this.recommendations.set([]);
+      this.recommendationsError.set(`Unable to load recommendations: ${error}`);
+    } finally {
+      this.isLoadingRecommendations.set(false);
+    }
+  }
+
+  private isBookInLibrary(book: Book) {
+    return this.books().some((entry) => entry.id === book.id);
+  }
+
+  private async loadRemoteBookSummary(book: Book): Promise<Book> {
+    const author = book.authors[0]?.trim();
+    const fallbackQuery = author ? `${book.title} ${author}` : book.title;
+    const details = await this.catalog.getWorkDetails(book.id, fallbackQuery);
+    const summary = details.summary ?? details.description ?? book.summary ?? book.description ?? null;
+    return {
+      ...book,
+      ...details,
+      summary,
+      description: details.description ?? summary,
+    };
+  }
+
   private getMeaningfulText(value?: string | null): string | null {
     const text = value?.trim();
     if (!text || text.startsWith("Imported from scan:")) {
       return null;
     }
     return text;
+  }
+
+  private randomLoaderVariant() {
+    const index = Math.floor(Math.random() * this.loaderVariants.length);
+    return this.loaderVariants[index];
   }
 }

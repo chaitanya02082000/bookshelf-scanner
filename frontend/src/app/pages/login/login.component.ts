@@ -15,6 +15,8 @@ import {Browser} from "@capacitor/browser";
 export class LoginComponent {
   private readonly auth0Domain = "dev-kdeoxnytvveh762k.us.auth0.com";
   private readonly nativeScheme = "com.gmail.chaitanyagithub0208";
+  private readonly audience = "bookshelf";
+  private readonly scope = "openid profile email offline_access";
   private readonly redirectUri = Capacitor.isNativePlatform()
     ? `${this.nativeScheme}://${this.auth0Domain}/capacitor/${this.nativeScheme}/callback`
     : window.location.origin;
@@ -25,6 +27,8 @@ export class LoginComponent {
     this.auth.loginWithRedirect({
       authorizationParams: {
         redirect_uri: this.redirectUri,
+        audience: this.audience,
+        scope: this.scope,
       },
       async openUrl(url: string) {
         if (Capacitor.isNativePlatform()) {
@@ -40,6 +44,8 @@ export class LoginComponent {
     this.auth.loginWithRedirect({
       authorizationParams: {
         redirect_uri: this.redirectUri,
+        audience: this.audience,
+        scope: this.scope,
         screen_hint: "signup",
       },
       async openUrl(url: string) {

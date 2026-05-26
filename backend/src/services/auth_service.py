@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import logging
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -8,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 
 bearer_scheme = HTTPBearer(auto_error=True)
+logger = logging.getLogger(__name__)
 
 
 class AuthenticatedUser:
@@ -18,14 +20,20 @@ class AuthenticatedUser:
 
 class AuthService:
     def __init__(self) -> None:
-        self.domain = os.getenv(
-            "AUTH0_DOMAIN", "dev-kdeoxnytvveh762k.us.auth0.com"
+        self.domain = self._normalize_domain(
+            os.getenv("AUTH0_DOMAIN", "dev-kdeoxnytvveh762k.us.auth0.com")
         )
-        self.audience = os.getenv("AUTH0_AUDIENCE", "bookshelf")
+        self.audience = os.getenv("AUTH0_AUDIENCE", "bookshelf").strip()
         self.issuer = f"https://{self.domain}/"
         self.jwks_client = jwt.PyJWKClient(
             f"https://{self.domain}/.well-known/jwks.json"
         )
+
+    def _normalize_domain(self, value: str) -> str:
+        normalized = value.strip()
+        normalized = normalized.removeprefix("https://")
+        normalized = normalized.removeprefix("http://")
+        return normalized.rstrip("/")
 
     def verify_token(self, token: str) -> AuthenticatedUser:
         try:
@@ -38,6 +46,7 @@ class AuthService:
                 issuer=self.issuer,
             )
         except Exception as exc:
+            logger.warning("Token verification failed: %s", exc)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired token",

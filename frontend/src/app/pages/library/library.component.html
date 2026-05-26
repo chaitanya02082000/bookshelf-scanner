@@ -1,19 +1,20 @@
 <section class="library">
-  <div class="library__header">
-    <div>
-      <p class="library__eyebrow">Your shelves</p>
-      <h2>Library</h2>
-      <p class="library__subtitle">
-        Curate the books scanned from your shelves and any discoveries you add.
-      </p>
+  <section class="library__section">
+    <div class="library__section-header">
+      <div>
+        <p class="library__eyebrow">Saved books</p>
+        <h2>Saved books</h2>
+      </div>
+      @if (savedBookCount()) {
+        <p class="library__count">{{ savedBookCount() }} saved</p>
+      }
     </div>
-  </div>
 
-  @if (!hasBooks()) {
-    <div class="library__empty">
-      <p>No books yet. Upload a shelf to begin the catalog.</p>
-    </div>
-  } @else {
+    @if (!hasBooks()) {
+      <div class="library__empty">
+        <p>No books yet. Upload a shelf to begin the catalog.</p>
+      </div>
+    } @else {
       <div class="library__grid">
         @for (book of books(); track book.id) {
           <article class="library-card" (click)="openBookModal(book)">
@@ -44,7 +45,64 @@
         </article>
       }
     </div>
-  }
+    }
+  </section>
+
+  <section class="library__section library__section--recommendations">
+    <div class="library__section-header">
+      <div>
+        <p class="library__eyebrow">Recommended books</p>
+        <h3>Recommended for you</h3>
+      </div>
+    </div>
+
+    @if (isLoadingRecommendations()) {
+      <div class="library__loader-panel">
+        <div class="library-loader-shell library-loader-shell--panel">
+          <div [class]="recommendationLoaderVariant()"></div>
+        </div>
+        <p class="library__loader-copy">Building suggestions from your saved books and recent searches.</p>
+      </div>
+    } @else if (recommendationsError()) {
+      <div class="library__recommendations-state">{{ recommendationsError() }}</div>
+    } @else if (recommendations().length) {
+      <div class="library__grid">
+        @for (book of recommendations(); track book.id) {
+          <article class="library-card library-card--recommendation" (click)="openBookModal(book)">
+            <div class="library-card__cover">
+              @if (book.coverUrl) {
+                <img [src]="book.coverUrl" [alt]="book.title" />
+              } @else {
+                <div class="library-card__placeholder">No cover</div>
+              }
+            </div>
+            <div class="library-card__body">
+              <h3>{{ book.title }}</h3>
+              <p class="library-card__author">{{ book.authors.join(", ") }}</p>
+              @if (book.reason) {
+                <p class="library-card__reason">{{ book.reason }}</p>
+              }
+              <div class="library-card__meta">
+                @if (book.publishedDate) {
+                  <span>{{ book.publishedDate }}</span>
+                }
+                @if (book.source) {
+                  <span>{{ book.source }}</span>
+                }
+              </div>
+            </div>
+            <button class="library-card__add" (click)="addRecommendedBook(book, $event)">
+              Add to library
+            </button>
+          </article>
+        }
+      </div>
+    } @else {
+      <div class="library__recommendations-state">
+        Recommendations will appear here after you save and search for more books.
+      </div>
+    }
+  </section>
 
   @if (modalOpen() && selectedBook(); as book) {
     <div class="book-modal" role="dialog" aria-modal="true">

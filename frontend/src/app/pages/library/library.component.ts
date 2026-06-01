@@ -5,6 +5,8 @@ import {Book, BookRecommendation, ExternalEbookResult, PriceOffer} from "@/core/
 import {BookCatalogService, LibraryService, RecommendationService} from "@/core/services";
 import {formatBookSummaryHtml} from "@/core/utils/book-summary";
 
+type BookModalTab = "ebooks" | "prices";
+
 @Component({
   selector: "app-library",
   standalone: true,
@@ -43,6 +45,7 @@ export class LibraryComponent {
   protected readonly ebookResolvingId = signal<string | null>(null);
   protected readonly ebookError = signal("");
   protected readonly modalError = signal("");
+  protected readonly activeModalTab = signal<BookModalTab>("ebooks");
 
   constructor() {
     effect(() => {
@@ -67,6 +70,7 @@ export class LibraryComponent {
     this.isLoadingEbooks.set(false);
     this.hasRequestedEbooks.set(false);
     this.ebookResolvingId.set(null);
+    this.activeModalTab.set("ebooks");
 
     const summaryText = this.getMeaningfulText(book.summary) || this.getMeaningfulText(book.description);
     if (summaryText) {
@@ -158,6 +162,18 @@ export class LibraryComponent {
     }
   }
 
+  async setModalTab(tab: BookModalTab) {
+    this.activeModalTab.set(tab);
+
+    if (tab === "ebooks" && !this.hasRequestedEbooks()) {
+      await this.loadEbookOptions();
+    }
+
+    if (tab === "prices" && !this.hasRequestedPrices()) {
+      await this.loadPriceOffers();
+    }
+  }
+
   closeBookModal() {
     this.modalOpen.set(false);
     this.selectedBook.set(null);
@@ -168,6 +184,7 @@ export class LibraryComponent {
     this.modalError.set("");
     this.ebookError.set("");
     this.ebookResolvingId.set(null);
+    this.activeModalTab.set("ebooks");
   }
 
   protected formatOfferPrice(offer: PriceOffer): string {

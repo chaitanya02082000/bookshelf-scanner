@@ -142,109 +142,131 @@
               ></div>
             }
 
-            <div class="book-modal__section">
-              @if (!hasRequestedEbooks()) {
-                <div class="book-modal__actions">
-                  <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadEbookOptions()">
-                    Find ebook
-                  </button>
-                </div>
-              } @else if (isLoadingEbooks()) {
-                <div class="book-modal__loading">Loading digital editions...</div>
-              } @else if (ebookError()) {
-                <div class="book-modal__empty">{{ ebookError() }}</div>
-                <div class="book-modal__actions">
-                  <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadEbookOptions()">
-                    Try again
-                  </button>
-                </div>
-              } @else {
-                <div class="book-modal__actions">
-                  <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadEbookOptions()">
-                    Refresh ebooks
-                  </button>
-                </div>
-                <div class="book-modal__prices">
-                  @for (ebook of ebookResults(); track ebook.id) {
-                    <div class="price-card">
-                      <div>
-                        <p class="price-card__source">
-                          {{ ebook.source || 'External source' }}
-                          @if (ebook.score !== null && ebook.score !== undefined) {
-                            · Score {{ ebook.score }}
-                          }
-                        </p>
-                        <p class="price-card__title">{{ ebook.title }}</p>
-                        <p class="price-card__note">
-                          {{ ebook.author || 'Unknown author' }}
-                          @if (ebook.extension) {
-                            · {{ ebook.extension | uppercase }}
-                          }
-                          @if (ebook.year) {
-                            · {{ ebook.year }}
-                          }
-                        </p>
-                      </div>
-                      <button
-                        class="book-modal__action"
-                        type="button"
-                        (click)="openEbookLink(ebook)"
-                        [disabled]="ebookResolvingId() === ebook.id"
-                      >
-                        @if (ebookResolvingId() === ebook.id) {
-                          Opening...
-                        } @else {
-                          Open link
-                        }
-                      </button>
-                    </div>
-                  }
-                </div>
-              }
-            </div>
+            <div class="book-modal__folders">
+              <div class="book-modal__folder-tabs" role="tablist" aria-label="Book resources">
+                <button
+                  class="book-modal__folder-tab"
+                  [class.book-modal__folder-tab--active]="activeModalTab() === 'ebooks'"
+                  type="button"
+                  role="tab"
+                  [attr.aria-selected]="activeModalTab() === 'ebooks'"
+                  (click)="setModalTab('ebooks')"
+                >
+                  Digital editions
+                </button>
+                <button
+                  class="book-modal__folder-tab"
+                  [class.book-modal__folder-tab--active]="activeModalTab() === 'prices'"
+                  type="button"
+                  role="tab"
+                  [attr.aria-selected]="activeModalTab() === 'prices'"
+                  (click)="setModalTab('prices')"
+                >
+                  Prices
+                </button>
+              </div>
 
-            <div class="book-modal__section">
-              @if (!hasRequestedPrices()) {
-                <div class="book-modal__actions">
-                  <button class="book-modal__action" type="button" (click)="loadPriceOffers()">
-                    Find prices
-                  </button>
-                </div>
-              } @else if (isLoadingPrices()) {
-                <div class="book-modal__loading">Loading price matches...</div>
-              } @else if (modalError()) {
-                <div class="book-modal__empty">{{ modalError() }}</div>
-                <div class="book-modal__actions">
-                  <button class="book-modal__action" type="button" (click)="loadPriceOffers()">
-                    Try again
-                  </button>
-                </div>
-              } @else {
-                <div class="book-modal__actions">
-                  <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadPriceOffers()">
-                    Refresh prices
-                  </button>
-                </div>
-                <div class="book-modal__prices">
-                  @for (offer of priceOffers(); track offer.productUrl || offer.asin || offer.title) {
-                    <a
-                      class="price-card"
-                      [href]="offer.productUrl || '#'"
-                      target="_blank"
-                      rel="noreferrer noopener"
-                    >
-                      <div>
-                        <p class="price-card__source">{{ offer.provider || offer.source }}</p>
-                        <p class="price-card__title">{{ offer.title }}</p>
-                        @if (offer.note) {
-                          <p class="price-card__note">{{ offer.note }}</p>
+              <div class="book-modal__folder-panel" role="tabpanel">
+                @if (activeModalTab() === 'ebooks') {
+                  <div class="book-modal__section">
+                    @if (!hasRequestedEbooks()) {
+                      <div class="book-modal__actions">
+                        <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadEbookOptions()">
+                          Find ebook
+                        </button>
+                      </div>
+                    } @else if (isLoadingEbooks()) {
+                      <div class="book-modal__loading">Loading digital editions...</div>
+                    } @else if (ebookError()) {
+                      <div class="book-modal__empty">{{ ebookError() }}</div>
+                      <div class="book-modal__actions">
+                        <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadEbookOptions()">
+                          Try again
+                        </button>
+                      </div>
+                    } @else {
+                      <div class="book-modal__actions">
+                        <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadEbookOptions()">
+                          Refresh ebooks
+                        </button>
+                      </div>
+                      <div class="book-modal__prices">
+                        @for (ebook of ebookResults(); track ebook.id) {
+                          <button
+                            class="price-card price-card--interactive"
+                            type="button"
+                            (click)="openEbookLink(ebook)"
+                            [disabled]="ebookResolvingId() === ebook.id"
+                          >
+                            <div>
+                              <p class="price-card__source">
+                                {{ ebook.source || 'External source' }}
+                                @if (ebook.score !== null && ebook.score !== undefined) {
+                                  · Score {{ ebook.score }}
+                                }
+                              </p>
+                              <p class="price-card__title">{{ ebook.title }}</p>
+                              <p class="price-card__note">
+                                {{ ebook.author || 'Unknown author' }}
+                                @if (ebook.extension) {
+                                  · {{ ebook.extension | uppercase }}
+                                }
+                                @if (ebook.year) {
+                                  · {{ ebook.year }}
+                                }
+                              </p>
+                            </div>
+                          </button>
                         }
                       </div>
-                      <p class="price-card__value">{{ formatOfferPrice(offer) }}</p>
-                    </a>
-                  }
-                </div>
-              }
+                    }
+                  </div>
+                } @else {
+                  <div class="book-modal__section">
+                    @if (!hasRequestedPrices()) {
+                      <div class="book-modal__actions">
+                        <button class="book-modal__action" type="button" (click)="loadPriceOffers()">
+                          Find prices
+                        </button>
+                      </div>
+                    } @else if (isLoadingPrices()) {
+                      <div class="book-modal__loading">Loading price matches...</div>
+                    } @else if (modalError()) {
+                      <div class="book-modal__empty">{{ modalError() }}</div>
+                      <div class="book-modal__actions">
+                        <button class="book-modal__action" type="button" (click)="loadPriceOffers()">
+                          Try again
+                        </button>
+                      </div>
+                    } @else {
+                      <div class="book-modal__actions">
+                        <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadPriceOffers()">
+                          Refresh prices
+                        </button>
+                      </div>
+                      <div class="book-modal__prices">
+                        @for (offer of priceOffers(); track offer.productUrl || offer.asin || offer.title) {
+                          <a
+                            class="price-card"
+                            [href]="offer.productUrl || '#'"
+                            target="_blank"
+                            rel="noreferrer noopener"
+                          >
+                            <div>
+                              <p class="price-card__source">{{ offer.provider || offer.source }}</p>
+                              <p class="price-card__title">{{ offer.title }}</p>
+                              @if (offer.note) {
+                                <p class="price-card__note">{{ offer.note }}</p>
+                              }
+                            </div>
+                            <p class="price-card__value">{{ formatOfferPrice(offer) }}</p>
+                          </a>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
             </div>
           </div>
         </div>

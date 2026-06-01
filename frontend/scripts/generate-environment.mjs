@@ -6,6 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
 const environmentsDir = path.join(projectRoot, "src", "environments");
+const defaultApiUrl = "https://jkjj--bookshelf-scanner-backend-fastapi-app-dev.modal.run/api";
 
 const normalizeApiUrl = (value) => {
   const trimmed = value.trim().replace(/\/+$/, "");
@@ -15,12 +16,12 @@ const normalizeApiUrl = (value) => {
 const devApiUrl = normalizeApiUrl(
   process.env.FRONTEND_API_URL_DEV ??
     process.env.FRONTEND_API_URL ??
-    "http://localhost:8000/api"
+    defaultApiUrl
 );
 const prodApiUrl = normalizeApiUrl(
   process.env.FRONTEND_API_URL_PROD ??
     process.env.FRONTEND_API_URL ??
-    "http://localhost:8000/api"
+    defaultApiUrl
 );
 const googleBooksApiKey =
   process.env.FRONTEND_GOOGLE_BOOKS_API_KEY ??

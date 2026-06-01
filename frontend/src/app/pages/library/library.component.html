@@ -164,6 +164,16 @@
                 >
                   Prices
                 </button>
+                <button
+                  class="book-modal__folder-tab"
+                  [class.book-modal__folder-tab--active]="activeModalTab() === 'pdf'"
+                  type="button"
+                  role="tab"
+                  [attr.aria-selected]="activeModalTab() === 'pdf'"
+                  (click)="setModalTab('pdf')"
+                >
+                  PDF
+                </button>
               </div>
 
               <div class="book-modal__folder-panel" role="tabpanel">
@@ -176,7 +186,11 @@
                         </button>
                       </div>
                     } @else if (isLoadingEbooks()) {
-                      <div class="book-modal__loading">Loading digital editions...</div>
+                      <div class="book-modal__loading book-modal__loading--loader" aria-label="Loading digital editions">
+                        <div class="library-loader-shell library-loader-shell--panel">
+                          <div [class]="ebookLoaderVariant()"></div>
+                        </div>
+                      </div>
                     } @else if (ebookError()) {
                       <div class="book-modal__empty">{{ ebookError() }}</div>
                       <div class="book-modal__actions">
@@ -221,7 +235,7 @@
                       </div>
                     }
                   </div>
-                } @else {
+                } @else if (activeModalTab() === 'prices') {
                   <div class="book-modal__section">
                     @if (!hasRequestedPrices()) {
                       <div class="book-modal__actions">
@@ -230,7 +244,11 @@
                         </button>
                       </div>
                     } @else if (isLoadingPrices()) {
-                      <div class="book-modal__loading">Loading price matches...</div>
+                      <div class="book-modal__loading book-modal__loading--loader" aria-label="Loading price matches">
+                        <div class="library-loader-shell library-loader-shell--panel">
+                          <div [class]="priceLoaderVariant()"></div>
+                        </div>
+                      </div>
                     } @else if (modalError()) {
                       <div class="book-modal__empty">{{ modalError() }}</div>
                       <div class="book-modal__actions">
@@ -261,6 +279,72 @@
                             </div>
                             <p class="price-card__value">{{ formatOfferPrice(offer) }}</p>
                           </a>
+                        }
+                      </div>
+                    }
+                  </div>
+                } @else {
+                  <div class="book-modal__section">
+                    @if (!hasRequestedPdf()) {
+                      <div class="book-modal__actions">
+                        <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadPdfResults()">
+                          Find PDF files
+                        </button>
+                      </div>
+                    } @else if (pdfError()) {
+                      <div class="book-modal__empty">{{ pdfError() }}</div>
+                      <div class="book-modal__actions">
+                        <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadPdfResults()">
+                          Try again
+                        </button>
+                      </div>
+                    } @else {
+                      <div class="book-modal__actions">
+                        <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadPdfResults()">
+                          Refresh PDF results
+                        </button>
+                      </div>
+                      <div
+                        class="book-modal__pdf-results-shell"
+                        [class.book-modal__pdf-results-shell--loading]="isLoadingPdf()"
+                      >
+                        <div id="library-pdf-probe" class="book-modal__pdf-probe" aria-hidden="true"></div>
+                        @if (isLoadingPdf()) {
+                          <div class="book-modal__loading book-modal__loading--loader" aria-label="Loading PDF results">
+                            <div class="library-loader-shell library-loader-shell--panel">
+                              <div [class]="pdfLoaderVariant()"></div>
+                            </div>
+                          </div>
+                        }
+                        @if (pdfResults().length) {
+                          <div class="book-modal__pdf-results">
+                            @for (item of pdfResults(); track item.id) {
+                              <button
+                                class="price-card price-card--interactive price-card--pdf"
+                                type="button"
+                                (click)="openPdfLink(item)"
+                              >
+                                @if (item.thumbnailUrl) {
+                                  <img class="price-card__thumb" [src]="item.thumbnailUrl" [alt]="item.title" />
+                                }
+                                <div>
+                                  <p class="price-card__source">
+                                    {{ item.sourceLabel || item.visibleUrl || "Search result" }}
+                                    @if (item.fileFormat) {
+                                      · {{ item.fileFormat }}
+                                    }
+                                  </p>
+                                  <p class="price-card__title">{{ item.title }}</p>
+                                  @if (item.visibleUrl) {
+                                    <p class="price-card__path">{{ item.visibleUrl }}</p>
+                                  }
+                                  @if (item.snippet) {
+                                    <p class="price-card__note">{{ item.snippet }}</p>
+                                  }
+                                </div>
+                              </button>
+                            }
+                          </div>
                         }
                       </div>
                     }

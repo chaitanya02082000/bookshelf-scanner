@@ -36,3 +36,4 @@ def resolve_libgen_download(request: LibgenResolveRequest) -> ResultWithData[str
             status_code=404, detail="Download link could not be resolved"
         )
     return ResultWithData[str].succeed(resolved_link)
+

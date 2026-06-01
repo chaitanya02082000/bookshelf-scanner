@@ -689,6 +689,14 @@
   color: oklch(0.82 0.01 80);
 }
 
+.book-modal__loading--loader {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  padding: var(--bs-space-5);
+  border-style: solid;
+}
+
 .book-modal__prices {
   display: grid;
   gap: var(--bs-space-2);
@@ -731,6 +739,7 @@
 
 .price-card__title,
 .price-card__value,
+.price-card__path,
 .price-card__note {
   margin: 0;
 }
@@ -746,10 +755,116 @@
   line-height: 1.35;
 }
 
+.price-card__path {
+  margin-top: 0.2rem;
+  color: oklch(0.66 0.01 74);
+  font-size: 0.72rem;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
 .price-card__value {
   font-size: 1rem;
   font-weight: 700;
   color: oklch(0.86 0.03 78);
+}
+
+.book-modal__pdf-results-shell {
+  position: relative;
+  border: 1px solid oklch(0.42 0.03 64 / 0.5);
+  background: oklch(0.93 0.01 92 / 0.94);
+  color: oklch(0.22 0.01 55);
+  padding: 0.85rem 1rem;
+  overflow: hidden;
+}
+
+.book-modal__pdf-results-shell--loading {
+  min-height: 320px;
+}
+
+.book-modal__pdf-results {
+  display: grid;
+  gap: var(--bs-space-2);
+  min-height: 220px;
+}
+
+.book-modal__pdf-probe {
+  position: absolute;
+  left: -99999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.book-modal__pdf-results-shell .book-modal__loading--loader {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  border: none;
+  background: oklch(0.93 0.01 92 / 0.92);
+  z-index: 1;
+}
+
+.price-card--pdf {
+  align-items: start;
+}
+
+.price-card__thumb {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid oklch(0.78 0.01 85);
+  background: oklch(0.9 0.01 92);
+}
+
+.book-modal__pdf-results :is(.gsc-control-cse, .gsc-control-wrapper-cse) {
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  color: inherit !important;
+  font-family: inherit !important;
+}
+
+.book-modal__pdf-results .gsc-above-wrapper-area,
+.book-modal__pdf-results .gcsc-find-more-on-google,
+.book-modal__pdf-results .gsc-adBlock,
+.book-modal__pdf-results .gsc-result-info,
+.book-modal__pdf-results .gsc-orderby-container,
+.book-modal__pdf-results .gsc-thumbnail-inside,
+.book-modal__pdf-results .gsc-url-top {
+  display: none !important;
+}
+
+.book-modal__pdf-results .gsc-resultsbox-visible {
+  overflow: visible !important;
+}
+
+.book-modal__pdf-results .gsc-webResult.gsc-result,
+.book-modal__pdf-results .gs-webResult.gs-result {
+  border: 1px solid oklch(0.78 0.01 85) !important;
+  background: oklch(0.97 0.01 96) !important;
+  padding: 0.9rem 1rem !important;
+  margin-bottom: 0.7rem !important;
+}
+
+.book-modal__pdf-results .gs-title,
+.book-modal__pdf-results .gs-title * {
+  color: oklch(0.25 0.02 48) !important;
+  text-decoration: none !important;
+  font-weight: 600 !important;
+}
+
+.book-modal__pdf-results .gs-visibleUrl,
+.book-modal__pdf-results .gs-visibleUrl-short {
+  color: oklch(0.48 0.03 70) !important;
+}
+
+.book-modal__pdf-results .gs-snippet {
+  color: oklch(0.36 0.01 60) !important;
 }
 
 @media (max-width: 600px) {
@@ -796,5 +911,10 @@
   .price-card .book-modal__action,
   .price-card__value {
     align-self: stretch;
+  }
+
+  .book-modal__pdf-results-shell {
+    min-height: 280px;
+    padding: 0.75rem;
   }
 }

@@ -21,4 +21,5 @@ export interface BookCommentBookPayload {
 
 export interface CreateBookCommentRequest extends BookCommentBookPayload {
   body: string;
+  userDisplayName?: string | null;
 }

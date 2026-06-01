@@ -4,6 +4,12 @@ import {AuthService} from "@auth0/auth0-angular";
 import {Book, BookComment, CreateBookCommentRequest} from "@/core/models";
 import {environment} from "@/../environments/environment";
 
+interface Auth0UserProfile {
+  name?: string;
+  nickname?: string;
+  email?: string;
+}
+
 interface ApiResult<T> {
   success: boolean;
   data?: T;
@@ -30,9 +36,11 @@ export class CommentService {
   }
 
   async createBookComment(book: Book, body: string): Promise<BookComment | null> {
+    const profile = (await firstValueFrom(this.auth.user$)) as Auth0UserProfile | null;
     const payload: CreateBookCommentRequest = {
       ...this.bookPayload(book),
       body,
+      userDisplayName: profile?.name?.trim() || profile?.nickname?.trim() || profile?.email?.trim() || null,
     };
     const result = await this.authorizedFetch<BookComment>(`${this.apiUrl}/comments/books`, {
       method: "POST",

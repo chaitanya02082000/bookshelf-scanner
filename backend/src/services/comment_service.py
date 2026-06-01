@@ -44,7 +44,7 @@ class CommentService:
             "authors": request.authors,
             "isbn": request.isbn,
             "auth0UserId": user.auth0_user_id,
-            "userDisplayName": self._display_name(user),
+            "userDisplayName": self._display_name(user, request.user_display_name),
             "body": request.body.strip(),
             "createdAt": now,
             "updatedAt": now,
@@ -92,7 +92,11 @@ class CommentService:
         lowered = value.strip().lower()
         return re.sub(r"\s+", " ", lowered)
 
-    def _display_name(self, user: AuthenticatedUser) -> str:
+    def _display_name(
+        self, user: AuthenticatedUser, requested_display_name: str | None = None
+    ) -> str:
+        if requested_display_name and requested_display_name.strip():
+            return requested_display_name.strip()
         if user.display_name and user.display_name.strip():
             return user.display_name.strip()
         if user.email and user.email.strip():

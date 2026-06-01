@@ -20,6 +20,7 @@ class BookCommentListRequest(BookCommentBookInput):
 
 class CreateBookCommentRequest(BookCommentBookInput):
     body: str = Field(min_length=1, max_length=1000)
+    user_display_name: str | None = None
 
 
 class BookComment(BaseModel):

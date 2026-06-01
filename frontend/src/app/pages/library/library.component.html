@@ -174,6 +174,16 @@
                 >
                   PDF
                 </button>
+                <button
+                  class="book-modal__folder-tab"
+                  [class.book-modal__folder-tab--active]="activeModalTab() === 'comments'"
+                  type="button"
+                  role="tab"
+                  [attr.aria-selected]="activeModalTab() === 'comments'"
+                  (click)="setModalTab('comments')"
+                >
+                  Comments
+                </button>
               </div>
 
               <div class="book-modal__folder-panel" role="tabpanel">
@@ -283,7 +293,7 @@
                       </div>
                     }
                   </div>
-                } @else {
+                } @else if (activeModalTab() === 'pdf') {
                   <div class="book-modal__section">
                     @if (!hasRequestedPdf()) {
                       <div class="book-modal__actions">
@@ -343,6 +353,90 @@
                                   }
                                 </div>
                               </button>
+                            }
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                } @else {
+                  <div class="book-modal__section">
+                    @if (!hasRequestedComments()) {
+                      <div class="book-modal__actions">
+                        <button class="book-modal__action book-modal__action--secondary" type="button" (click)="loadComments()">
+                          Load comments
+                        </button>
+                      </div>
+                    } @else {
+                      <div class="book-modal__comments-shell">
+                        @if (isLoadingComments()) {
+                          <div class="book-modal__loading book-modal__loading--loader" aria-label="Loading comments">
+                            <div class="library-loader-shell library-loader-shell--panel">
+                              <div [class]="commentsLoaderVariant()"></div>
+                            </div>
+                          </div>
+                        }
+
+                        <div class="book-modal__comment-composer">
+                          <label class="book-modal__comments-label" for="book-comment-body">Leave a comment</label>
+                          <textarea
+                            id="book-comment-body"
+                            class="book-modal__comment-input"
+                            [value]="commentDraft()"
+                            (input)="updateCommentDraft(($any($event.target)).value)"
+                            maxlength="1000"
+                            rows="4"
+                            placeholder="Share a thought about this book"
+                          ></textarea>
+                          <div class="book-modal__comments-actions">
+                            <p class="book-modal__comments-count">{{ commentDraft().length }}/1000</p>
+                            <button
+                              class="book-modal__action"
+                              type="button"
+                              (click)="submitComment()"
+                              [disabled]="!commentDraft().trim() || isSubmittingComment()"
+                            >
+                              @if (isSubmittingComment()) {
+                                Posting...
+                              } @else {
+                                Post comment
+                              }
+                            </button>
+                          </div>
+                        </div>
+
+                        @if (commentsError()) {
+                          <div class="book-modal__empty">{{ commentsError() }}</div>
+                        }
+
+                        @if (!isLoadingComments() && bookComments().length === 0 && !commentsError()) {
+                          <div class="book-modal__empty">No comments yet for this book.</div>
+                        } @else if (bookComments().length) {
+                          <div class="book-modal__comment-list">
+                            @for (comment of bookComments(); track comment.id) {
+                              <article class="book-modal__comment-card">
+                                <div class="book-modal__comment-header">
+                                  <div>
+                                    <p class="book-modal__comment-author">{{ comment.userDisplayName }}</p>
+                                    <p class="book-modal__comment-date">{{ formatCommentDate(comment.createdAt) }}</p>
+                                  </div>
+                                  @if (comment.isOwner) {
+                                    <button
+                                      class="book-modal__comment-delete"
+                                      type="button"
+                                      (click)="deleteComment(comment)"
+                                      [disabled]="deletingCommentId() === comment.id"
+                                    >
+                                      @if (deletingCommentId() === comment.id) {
+                                        Deleting...
+                                      } @else {
+                                        Delete
+                                      }
+                                    </button>
+                                  }
+                                </div>
+                                <p class="book-modal__comment-body">{{ comment.body }}</p>
+                              </article>
                             }
                           </div>
                         }

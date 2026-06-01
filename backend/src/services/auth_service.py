@@ -13,9 +13,15 @@ logger = logging.getLogger(__name__)
 
 
 class AuthenticatedUser:
-    def __init__(self, auth0_user_id: str, email: str | None = None) -> None:
+    def __init__(
+        self,
+        auth0_user_id: str,
+        email: str | None = None,
+        display_name: str | None = None,
+    ) -> None:
         self.auth0_user_id = auth0_user_id
         self.email = email
+        self.display_name = display_name
 
 
 class AuthService:
@@ -59,7 +65,11 @@ class AuthService:
                 detail="Missing user identity",
             )
 
-        return AuthenticatedUser(auth0_user_id=sub, email=payload.get("email"))
+        return AuthenticatedUser(
+            auth0_user_id=sub,
+            email=payload.get("email"),
+            display_name=payload.get("name") or payload.get("nickname"),
+        )
 
 
 auth_service = AuthService()

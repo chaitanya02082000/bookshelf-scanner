@@ -867,6 +867,101 @@
   color: oklch(0.36 0.01 60) !important;
 }
 
+.book-modal__comments-shell {
+  display: grid;
+  gap: var(--bs-space-3);
+}
+
+.book-modal__comment-composer {
+  display: grid;
+  gap: var(--bs-space-2);
+  padding: var(--bs-space-3);
+  border: 1px solid oklch(0.42 0.03 64 / 0.5);
+  background: oklch(0.28 0.02 54 / 0.78);
+}
+
+.book-modal__comments-label,
+.book-modal__comment-date {
+  margin: 0;
+  color: oklch(0.72 0.01 78);
+  font-size: 0.78rem;
+}
+
+.book-modal__comment-input {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  border: 1px solid oklch(0.42 0.03 64 / 0.6);
+  background: oklch(0.2 0.02 46 / 0.92);
+  color: oklch(0.9 0.01 84);
+  padding: 0.8rem 0.9rem;
+  font: inherit;
+}
+
+.book-modal__comments-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bs-space-2);
+}
+
+.book-modal__comments-count,
+.book-modal__comment-author,
+.book-modal__comment-body {
+  margin: 0;
+}
+
+.book-modal__comments-count {
+  color: oklch(0.72 0.01 78);
+  font-size: 0.78rem;
+}
+
+.book-modal__comment-list {
+  display: grid;
+  gap: var(--bs-space-2);
+}
+
+.book-modal__comment-card {
+  display: grid;
+  gap: var(--bs-space-2);
+  padding: var(--bs-space-3);
+  border: 1px solid oklch(0.42 0.03 64 / 0.5);
+  background: oklch(0.28 0.02 54 / 0.78);
+}
+
+.book-modal__comment-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--bs-space-2);
+}
+
+.book-modal__comment-author {
+  font-weight: 600;
+}
+
+.book-modal__comment-body {
+  color: oklch(0.85 0.01 82);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.book-modal__comment-delete {
+  border: 1px solid oklch(0.55 0.05 28 / 0.55);
+  background: transparent;
+  color: oklch(0.8 0.04 28);
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06rem;
+}
+
+.book-modal__comment-delete:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 @media (max-width: 600px) {
   .library__section-header {
     align-items: start;
@@ -911,6 +1006,12 @@
   .price-card .book-modal__action,
   .price-card__value {
     align-self: stretch;
+  }
+
+  .book-modal__comments-actions,
+  .book-modal__comment-header {
+    align-items: start;
+    flex-direction: column;
   }
 
   .book-modal__pdf-results-shell {

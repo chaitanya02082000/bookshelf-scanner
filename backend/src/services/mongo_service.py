@@ -15,6 +15,9 @@ class MongoService:
         self.search_history_collection_name = os.getenv(
             "MONGODB_SEARCH_HISTORY_COLLECTION", "search_history"
         )
+        self.comments_collection_name = os.getenv(
+            "MONGODB_COMMENTS_COLLECTION", "comments"
+        )
         self._client: MongoClient | None = None
 
     def _get_client(self) -> MongoClient:
@@ -36,6 +39,11 @@ class MongoService:
         client = self._get_client()
         db = client[self.db_name]
         return db[self.search_history_collection_name]
+
+    def get_comments_collection(self) -> Collection:
+        client = self._get_client()
+        db = client[self.db_name]
+        return db[self.comments_collection_name]
 
 
 mongo_service = MongoService()

@@ -1,5 +1,6 @@
 export * from "./result.dto";
 export * from "./book.model";
+export * from "./book-comment.model";
 export * from "./book-recommendation.model";
 export * from "./book-search-result.model";
 export * from "./external-ebook-result.model";

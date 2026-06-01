@@ -1,4 +1,5 @@
 from .result import *
+from .comment import *
 from .libgen import *
 from .book import *
 from .price import *

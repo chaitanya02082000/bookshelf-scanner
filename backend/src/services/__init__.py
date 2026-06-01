@@ -4,6 +4,7 @@ load_environment()
 
 from .libgen_service import LibgenService
 from .auth_service import AuthenticatedUser, get_current_user
+from .comment_service import comment_service
 from .embedding_service import embedding_service
 from .library_service import library_service
 from .price_service import price_service

@@ -1,8 +1,8 @@
 import {ChangeDetectionStrategy, Component, computed, effect, signal} from "@angular/core";
 import {CommonModule} from "@angular/common";
 import {inject} from "@angular/core";
-import {Book, BookRecommendation, ExternalEbookResult, PriceOffer} from "@/core/models";
-import {BookCatalogService, LibraryService, RecommendationService} from "@/core/services";
+import {Book, BookComment, BookRecommendation, ExternalEbookResult, PriceOffer} from "@/core/models";
+import {BookCatalogService, CommentService, LibraryService, RecommendationService} from "@/core/services";
 import {formatBookSummaryHtml} from "@/core/utils/book-summary";
 
 declare global {
@@ -37,7 +37,7 @@ interface PdfSearchResultItem {
   thumbnailUrl: string | null;
 }
 
-type BookModalTab = "ebooks" | "prices" | "pdf";
+type BookModalTab = "ebooks" | "prices" | "pdf" | "comments";
 
 @Component({
   selector: "app-library",
@@ -60,6 +60,7 @@ export class LibraryComponent {
   ] as const;
   private readonly libraryService = inject(LibraryService);
   private readonly catalog = inject(BookCatalogService);
+  private readonly comments = inject(CommentService);
   private readonly recommendationService = inject(RecommendationService);
   protected readonly books = this.libraryService.books;
   protected readonly hasBooks = computed(() => this.books().length > 0);
@@ -73,6 +74,7 @@ export class LibraryComponent {
   protected readonly priceLoaderVariant = signal<string>(this.randomLoaderVariant());
   protected readonly ebookLoaderVariant = signal<string>(this.randomLoaderVariant());
   protected readonly pdfLoaderVariant = signal<string>(this.randomLoaderVariant());
+  protected readonly commentsLoaderVariant = signal<string>(this.randomLoaderVariant());
   protected readonly priceOffers = signal<PriceOffer[]>([]);
   protected readonly isLoadingPrices = signal(false);
   protected readonly hasRequestedPrices = signal(false);
@@ -85,6 +87,13 @@ export class LibraryComponent {
   protected readonly hasRequestedPdf = signal(false);
   protected readonly pdfError = signal("");
   protected readonly pdfResults = signal<PdfSearchResultItem[]>([]);
+  protected readonly isLoadingComments = signal(false);
+  protected readonly hasRequestedComments = signal(false);
+  protected readonly commentsError = signal("");
+  protected readonly bookComments = signal<BookComment[]>([]);
+  protected readonly commentDraft = signal("");
+  protected readonly isSubmittingComment = signal(false);
+  protected readonly deletingCommentId = signal<string | null>(null);
   protected readonly modalError = signal("");
   protected readonly activeModalTab = signal<BookModalTab>("ebooks");
 
@@ -114,6 +123,13 @@ export class LibraryComponent {
     this.isLoadingPdf.set(false);
     this.hasRequestedPdf.set(false);
     this.pdfResults.set([]);
+    this.isLoadingComments.set(false);
+    this.hasRequestedComments.set(false);
+    this.commentsError.set("");
+    this.bookComments.set([]);
+    this.commentDraft.set("");
+    this.isSubmittingComment.set(false);
+    this.deletingCommentId.set(null);
     this.ebookResolvingId.set(null);
     this.activeModalTab.set("ebooks");
 
@@ -238,6 +254,77 @@ export class LibraryComponent {
     window.open(item.url, "_blank", "noopener,noreferrer");
   }
 
+  updateCommentDraft(value: string) {
+    this.commentDraft.set(value);
+  }
+
+  async loadComments() {
+    const book = this.selectedBook();
+    if (!book || this.isLoadingComments()) {
+      return;
+    }
+
+    this.hasRequestedComments.set(true);
+    this.commentsError.set("");
+    this.commentsLoaderVariant.set(this.randomLoaderVariant());
+    this.isLoadingComments.set(true);
+
+    try {
+      const comments = await this.comments.listBookComments(book, 100);
+      this.bookComments.set(comments);
+    } catch (error) {
+      this.commentsError.set(`Failed to load comments: ${error}`);
+    } finally {
+      this.isLoadingComments.set(false);
+    }
+  }
+
+  async submitComment() {
+    const book = this.selectedBook();
+    const body = this.commentDraft().trim();
+    if (!book || !body || this.isSubmittingComment()) {
+      return;
+    }
+
+    this.commentsError.set("");
+    this.isSubmittingComment.set(true);
+    try {
+      const comment = await this.comments.createBookComment(book, body);
+      if (!comment) {
+        this.commentsError.set("Comment could not be saved.");
+        return;
+      }
+      this.bookComments.update((items) => [comment, ...items]);
+      this.commentDraft.set("");
+      this.hasRequestedComments.set(true);
+    } catch (error) {
+      this.commentsError.set(`Failed to save comment: ${error}`);
+    } finally {
+      this.isSubmittingComment.set(false);
+    }
+  }
+
+  async deleteComment(comment: BookComment) {
+    if (!comment.isOwner || this.deletingCommentId()) {
+      return;
+    }
+
+    this.commentsError.set("");
+    this.deletingCommentId.set(comment.id);
+    try {
+      const deleted = await this.comments.deleteBookComment(comment.id);
+      if (!deleted) {
+        this.commentsError.set("Comment could not be deleted.");
+        return;
+      }
+      this.bookComments.update((items) => items.filter((item) => item.id !== comment.id));
+    } catch (error) {
+      this.commentsError.set(`Failed to delete comment: ${error}`);
+    } finally {
+      this.deletingCommentId.set(null);
+    }
+  }
+
   async setModalTab(tab: BookModalTab) {
     this.activeModalTab.set(tab);
 
@@ -252,6 +339,10 @@ export class LibraryComponent {
     if (tab === "pdf" && !this.hasRequestedPdf()) {
       await this.loadPdfResults();
     }
+
+    if (tab === "comments" && !this.hasRequestedComments()) {
+      await this.loadComments();
+    }
   }
 
   closeBookModal() {
@@ -262,13 +353,20 @@ export class LibraryComponent {
     this.hasRequestedPrices.set(false);
     this.hasRequestedEbooks.set(false);
     this.hasRequestedPdf.set(false);
+    this.hasRequestedComments.set(false);
     this.isLoadingPrices.set(false);
     this.isLoadingEbooks.set(false);
     this.isLoadingPdf.set(false);
+    this.isLoadingComments.set(false);
     this.modalError.set("");
     this.ebookError.set("");
     this.pdfError.set("");
+    this.commentsError.set("");
     this.pdfResults.set([]);
+    this.bookComments.set([]);
+    this.commentDraft.set("");
+    this.isSubmittingComment.set(false);
+    this.deletingCommentId.set(null);
     this.ebookResolvingId.set(null);
     this.activeModalTab.set("ebooks");
   }
@@ -285,6 +383,17 @@ export class LibraryComponent {
 
   protected formatSummary(summary?: string | null): string {
     return formatBookSummaryHtml(summary);
+  }
+
+  protected formatCommentDate(value: string) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date);
   }
 
   private async loadRecommendations() {
